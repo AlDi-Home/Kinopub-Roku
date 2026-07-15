@@ -58,6 +58,8 @@ sub runContentTask()
         m.top.response = contentTaskSavePlaybackProgress(tokenStore, authService, watchingService, request)
     else if command = "markPlaybackWatched"
         m.top.response = contentTaskMarkPlaybackWatched(tokenStore, authService, watchingService, request)
+    else if command = "toggleEpisodeWatched"
+        m.top.response = contentTaskToggleEpisodeWatched(tokenStore, authService, watchingService, request)
     else
         m.top.response = { command: command, ok: false, error: "unknown_command", message: "Unknown content task command." }
     end if
@@ -546,6 +548,54 @@ function contentTaskMarkPlaybackWatched(tokenStore as Object, authService as Obj
     return result
 end function
 
+function contentTaskToggleEpisodeWatched(tokenStore as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
+    itemId = contentTaskIntegerField(request, "itemId", 0)
+    seasonNumber = contentTaskIntegerField(request, "seasonNumber", 0)
+    videoNumber = contentTaskIntegerField(request, "videoNumber", 0)
+    if itemId <= 0 or videoNumber <= 0
+        return { command: "toggleEpisodeWatched", ok: false, itemId: itemId, seasonNumber: seasonNumber, videoNumber: videoNumber, error: "invalid_media", message: "Unable to update watched status.", status: 0 }
+    end if
+
+    targetWatchedState = contentTaskBooleanFieldState(request, "watched")
+    if targetWatchedState.exists <> true
+        return { command: "toggleEpisodeWatched", ok: false, itemId: itemId, seasonNumber: seasonNumber, videoNumber: videoNumber, error: "unknown_watched_state", message: "Unable to update watched status.", status: 0 }
+    end if
+
+    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to update watched status.")
+    if tokenResult.ok <> true
+        tokenResult.command = "toggleEpisodeWatched"
+        return tokenResult
+    end if
+
+    result = watchingService.toggleWatched(tokenResult.accessToken, itemId, seasonNumber, videoNumber)
+    result.command = "toggleEpisodeWatched"
+    result.itemId = itemId
+    result.seasonNumber = seasonNumber
+    result.videoNumber = videoNumber
+    result.progressCleared = false
+    if result.ok <> true then return result
+
+    apiWatched = invalid
+    if result.DoesExist("watched") then apiWatched = result.watched
+    apiWatchedState = contentTaskBooleanValueState(apiWatched)
+    if apiWatchedState.exists and apiWatchedState.value <> targetWatchedState.value
+        result.ok = false
+        result.error = "watched_not_confirmed"
+        result.message = "Unable to confirm watched status changed."
+        return result
+    end if
+
+    clearResult = watchingService.markTime(tokenResult.accessToken, itemId, seasonNumber, videoNumber, 0)
+    if clearResult.ok = true
+        result.progressCleared = true
+    else
+        result.progressError = clearResult.error
+        result.progressMessage = clearResult.message
+    end if
+    result.watched = targetWatchedState.value
+    return result
+end function
+
 function contentTaskUsableTokens(tokenStore as Object, authService as Object) as Object
     tokens = tokenStore.load()
     if tokenStore.hasUsableAccessToken(tokens) then return { ok: true, tokens: tokens }
@@ -612,9 +662,14 @@ end function
 function contentTaskBooleanFieldState(source as Dynamic, key as String) as Object
     if source = invalid or type(source) <> "roAssociativeArray" then return { exists: false, value: false }
     if source.DoesExist(key) <> true or source[key] = invalid then return { exists: false, value: false }
-    value = source[key]
+    return contentTaskBooleanValueState(source[key])
+end function
+
+function contentTaskBooleanValueState(value as Dynamic) as Object
+    if value = invalid then return { exists: false, value: false }
     valueType = type(value)
     if valueType = "Boolean" or valueType = "roBoolean" then return { exists: true, value: value }
+    if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return { exists: true, value: value <> 0 }
     return { exists: false, value: false }
 end function
 

@@ -82,6 +82,7 @@ sub init()
     m.pendingPlaybackPayload = invalid
     m.pendingNextPlaybackMediaId = 0
     m.pendingNextPlaybackPayload = invalid
+    m.pendingWatchedToggleKey = ""
 
     m.top.observeField("selection", "onSelectionChanged")
     m.top.observeField("playbackError", "onPlaybackError")
@@ -1173,6 +1174,17 @@ function episodeWatchStatus(media as Dynamic) as Integer
     return -1
 end function
 
+function episodeVideoNumber(media as Dynamic) as Integer
+    if media = invalid then return 0
+    if media.videoNumber <> invalid and media.videoNumber > 0 then return media.videoNumber
+    if media.episodeNumber <> invalid and media.episodeNumber > 0 then return media.episodeNumber
+    return 0
+end function
+
+function watchedToggleKey(seasonNumber as Integer, videoNumber as Integer) as String
+    return StrI(seasonNumber).Trim() + ":" + StrI(videoNumber).Trim()
+end function
+
 function episodeProgressText(media as Dynamic) as String
     if media = invalid then return ""
     if episodeWatchStatus(media) <> 0 then return ""
@@ -1362,6 +1374,93 @@ sub moveSeason(delta as Integer)
     m.playbackErrorLabel.text = ""
     renderEpisodeList()
     updateSelectedMediaVisuals()
+end sub
+
+sub toggleCurrentEpisodeWatched()
+    if m.pendingWatchedToggleKey <> "" then return
+    if m.item = invalid or m.item.itemId <= 0 then return
+
+    media = currentMedia()
+    if media = invalid
+        m.playbackErrorLabel.text = "Unable to update watched status."
+        return
+    end if
+
+    seasonNumber = 0
+    if media.seasonNumber <> invalid then seasonNumber = media.seasonNumber
+    videoNumber = episodeVideoNumber(media)
+    if videoNumber <= 0
+        m.playbackErrorLabel.text = "Unable to update watched status."
+        return
+    end if
+
+    targetWatched = episodeWatchStatus(media) <> 1
+    m.pendingWatchedToggleKey = watchedToggleKey(seasonNumber, videoNumber)
+    m.playbackErrorLabel.text = "Updating watched status..."
+
+    task = CreateObject("roSGNode", "ContentTask")
+    task.command = "toggleEpisodeWatched"
+    task.request = {
+        itemId: m.item.itemId
+        seasonNumber: seasonNumber
+        videoNumber: videoNumber
+        watched: targetWatched
+    }
+    task.observeField("response", "onToggleEpisodeWatchedResponse")
+    task.control = "RUN"
+    m.toggleWatchedTask = task
+end sub
+
+sub onToggleEpisodeWatchedResponse(event as Object)
+    response = event.getData()
+    m.toggleWatchedTask = invalid
+    pendingKey = m.pendingWatchedToggleKey
+    m.pendingWatchedToggleKey = ""
+
+    if response = invalid or response.ok <> true
+        if responseRequiresSignIn(response)
+            requestSignInAgain(response)
+            return
+        end if
+        message = "Unable to update watched status."
+        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
+        m.playbackErrorLabel.text = message
+        return
+    end if
+
+    if watchedToggleKey(response.seasonNumber, response.videoNumber) <> pendingKey then return
+    applyEpisodeWatchedState(response.seasonNumber, response.videoNumber, response.watched)
+    if response.watched = true
+        m.playbackErrorLabel.text = "Marked watched."
+    else
+        m.playbackErrorLabel.text = "Marked unwatched."
+    end if
+end sub
+
+sub applyEpisodeWatchedState(seasonNumber as Integer, videoNumber as Integer, watched as Boolean)
+    for seasonIndex = 0 to m.seasons.Count() - 1
+        season = m.seasons[seasonIndex]
+        seasonMatches = true
+        if seasonNumber > 0 and season <> invalid and season.number <> invalid and season.number <> seasonNumber then seasonMatches = false
+
+        if season <> invalid and season.episodes <> invalid and seasonMatches
+            for episodeIndex = 0 to season.episodes.Count() - 1
+                episode = season.episodes[episodeIndex]
+                if episode <> invalid and episodeVideoNumber(episode) = videoNumber
+                    episode.watched = watched
+                    if watched
+                        episode.watchStatus = 1
+                    else
+                        episode.watchStatus = -1
+                    end if
+                    episode.progressSeconds = 0
+                    if seasonIndex = m.currentSeasonIndex then renderEpisodeList()
+                    updateSelectedMediaVisuals()
+                    return
+                end if
+            end for
+        end if
+    end for
 end sub
 
 sub startSelectedPlayback()
@@ -1785,6 +1884,9 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
             return true
         else if key = "OK"
             startSelectedPlayback()
+            return true
+        else if key = "options"
+            toggleCurrentEpisodeWatched()
             return true
         end if
     else if m.focusArea = "play"
