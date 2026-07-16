@@ -39,6 +39,7 @@ sub init()
     m.nextEpisodePromptOptionsHost = m.top.findNode("nextEpisodePromptOptionsHost")
     m.nextEpisodePromptCountdownLabel = m.top.findNode("nextEpisodePromptCountdownLabel")
     m.nextEpisodeCountdownTimer = m.top.findNode("nextEpisodeCountdownTimer")
+    m.bufferingDebounceTimer = m.top.findNode("bufferingDebounceTimer")
     m.seekDebounceTimer = m.top.findNode("seekDebounceTimer")
     m.seekSettleTimer = m.top.findNode("seekSettleTimer")
 
@@ -93,6 +94,8 @@ sub init()
     m.videoNode.observeField("state", "onVideoStateChanged")
     m.videoNode.observeField("position", "onVideoPositionChanged")
     m.videoNode.observeField("bufferingStatus", "onVideoBufferingStatusChanged")
+    m.videoNode.observeField("downloadedSegment", "onVideoDownloadedSegmentChanged")
+    m.videoNode.observeField("streamingSegment", "onVideoStreamingSegmentChanged")
     m.videoNode.observeField("availableAudioTracks", "onAvailableAudioTracksChanged")
     m.videoNode.observeField("availableSubtitleTracks", "onAvailableSubtitleTracksChanged")
     m.railHideTimer.observeField("fire", "onRailHideTimer")
@@ -100,6 +103,7 @@ sub init()
     m.statusClearTimer.observeField("fire", "onStatusClearTimer")
     m.resumePromptTimer.observeField("fire", "onResumePromptTimer")
     m.nextEpisodeCountdownTimer.observeField("fire", "onNextEpisodeCountdownTimer")
+    m.bufferingDebounceTimer.observeField("fire", "onBufferingDebounceTimer")
     m.seekDebounceTimer.observeField("fire", "onSeekDebounceTimer")
     m.seekSettleTimer.observeField("fire", "onSeekSettleTimer")
     m.top.setFocus(true)
@@ -212,7 +216,7 @@ sub startPlayback()
     applySavedQualityPreference()
     m.savedAudioPreferenceApplied = false
     logPlaybackStart()
-    content = playbackContentNode(savedPreferredSubtitleTrackName())
+    content = playbackContentNode(savedPreferredSubtitleTrackNameForPlayback())
     m.videoNode.content = content
     startPosition = resumeStartSeconds()
     if startPosition > 0
@@ -221,6 +225,19 @@ sub startPlayback()
     end if
     startPlaybackAtPosition(0)
 end sub
+
+function autoApplySavedPlaybackPreferencesEnabled() as Boolean
+    return false
+end function
+
+function autoApplySavedAudioPreferenceEnabled() as Boolean
+    return true
+end function
+
+function savedPreferredSubtitleTrackNameForPlayback() as String
+    if autoApplySavedPlaybackPreferencesEnabled() <> true then return ""
+    return savedPreferredSubtitleTrackName()
+end function
 
 function playbackContentNode(preferredSubtitleTrackName as String) as Object
     stream = currentPlaybackStream()
@@ -344,7 +361,7 @@ sub logPlaybackStart()
 
     print "PlayerScreen: start playback itemId="; itemId; " mediaId="; mediaId; " title="; title
     print "PlayerScreen: stream option="; StrI(m.playbackOptionIndex + 1).Trim(); "/"; StrI(m.playbackOptions.Count()).Trim(); " label="; stream.label
-    print "PlayerScreen: stream format="; streamFormat; " url="; streamUrl
+    print "PlayerScreen: stream format="; streamFormat; " url="; playbackDiagnosticRedactedUrl(streamUrl)
 end sub
 
 sub startPlaybackAtPosition(startPosition as Integer)
@@ -353,7 +370,6 @@ sub startPlaybackAtPosition(startPosition as Integer)
     m.top.setFocus(true)
     showStreamLoader("Loading stream")
     m.videoNode.control = "play"
-    applySavedAudioPreference()
     m.isPlaying = true
     if isLivePlayback() <> true
         m.progressTimer.control = "start"
@@ -1028,9 +1044,11 @@ sub onVideoStateChanged(event as Object)
     state = event.getData()
     print "PlayerScreen: video state="; state
     if state = "playing"
+        printVideoPlaybackDiagnostics("playing")
         hideStreamLoader()
         m.isPlaying = true
         m.playbackStarted = true
+        applySavedAudioPreference()
         if isLivePlayback() <> true then m.progressTimer.control = "start"
         updatePlayPauseControlLabel()
         showRail()
@@ -1042,7 +1060,8 @@ sub onVideoStateChanged(event as Object)
         updatePlayPauseControlLabel()
         showRail()
     else if state = "buffering"
-        showStreamLoader("Buffering")
+        printVideoPlaybackDiagnostics("buffering")
+        startBufferingDebounce()
         m.isPlaying = false
         m.railHideTimer.control = "stop"
         updatePlayPauseControlLabel()
@@ -1080,13 +1099,109 @@ sub onVideoStateChanged(event as Object)
     end if
 end sub
 
+sub startBufferingDebounce()
+    if m.bufferingDebounceTimer = invalid then return
+    if m.streamLoaderGroup <> invalid and m.streamLoaderGroup.visible = true then return
+
+    m.bufferingDebounceTimer.control = "stop"
+    m.bufferingDebounceTimer.control = "start"
+end sub
+
+sub onBufferingDebounceTimer()
+    if m.videoNode = invalid or m.videoNode.state <> "buffering" then return
+    showStreamLoader("Buffering")
+end sub
+
 sub onVideoBufferingStatusChanged()
+    status = invalid
+    if m.videoNode <> invalid then status = m.videoNode.bufferingStatus
+    if status <> invalid and type(status) = "roAssociativeArray"
+        print "PlayerScreen: buffering status percentage="; playbackDiagnosticField(status, "percentage"); " underrun="; playbackDiagnosticField(status, "isUnderrun"); " position="; currentPositionSeconds()
+    end if
+
     if m.streamLoaderGroup = invalid or m.streamLoaderGroup.visible <> true then return
     showStreamLoader("Buffering")
 end sub
 
+sub onVideoDownloadedSegmentChanged(event as Object)
+    segment = event.getData()
+    if segment = invalid or type(segment) <> "roAssociativeArray" then return
+
+    downloadDurationMs = playbackDiagnosticNumber(playbackDiagnosticField(segment, "DownloadDuration"))
+    segmentSize = playbackDiagnosticNumber(playbackDiagnosticField(segment, "SegSize"))
+    measuredThroughputBps = 0
+    if downloadDurationMs > 0 and segmentSize > 0
+        measuredThroughputBps = Int((segmentSize * 8.0 * 1000.0) / downloadDurationMs)
+    end if
+
+    segmentUrl = playbackDiagnosticString(playbackDiagnosticField(segment, "SegUrl"))
+    print "PlayerScreen: downloaded segment status="; playbackDiagnosticField(segment, "Status"); " sequence="; playbackDiagnosticField(segment, "SegSequence"); " type="; playbackDiagnosticField(segment, "SegType")
+    print "PlayerScreen: downloaded segment start="; playbackDiagnosticField(segment, "SegStart"); " mediaDurationMs="; playbackDiagnosticField(segment, "SegDuration"); " downloadDurationMs="; downloadDurationMs
+    print "PlayerScreen: downloaded segment sizeBytes="; segmentSize; " throughputBps="; measuredThroughputBps; " declaredBitrateBps="; playbackDiagnosticField(segment, "BitrateBPS")
+    print "PlayerScreen: downloaded segment width="; playbackDiagnosticField(segment, "Width"); " height="; playbackDiagnosticField(segment, "Height"); " url="; playbackDiagnosticRedactedUrl(segmentUrl)
+end sub
+
+sub onVideoStreamingSegmentChanged(event as Object)
+    segment = event.getData()
+    if segment = invalid or type(segment) <> "roAssociativeArray" then return
+
+    segmentUrl = playbackDiagnosticString(playbackDiagnosticField(segment, "segUrl"))
+    print "PlayerScreen: streaming segment sequence="; playbackDiagnosticField(segment, "segSequence"); " type="; playbackDiagnosticField(segment, "segTypeStr"); " start="; playbackDiagnosticField(segment, "segStart")
+    print "PlayerScreen: streaming segment bitrateBps="; playbackDiagnosticField(segment, "segBitrateBps"); " width="; playbackDiagnosticField(segment, "width"); " height="; playbackDiagnosticField(segment, "height")
+    print "PlayerScreen: streaming segment latencyMs="; playbackDiagnosticField(segment, "latency"); " url="; playbackDiagnosticRedactedUrl(segmentUrl)
+end sub
+
+sub printVideoPlaybackDiagnostics(reason as String)
+    if m.videoNode = invalid then return
+
+    streamInfo = m.videoNode.streamInfo
+    if streamInfo <> invalid and type(streamInfo) = "roAssociativeArray"
+        streamUrl = playbackDiagnosticString(playbackDiagnosticField(streamInfo, "streamUrl"))
+        print "PlayerScreen: stream info reason="; reason; " underrun="; playbackDiagnosticField(streamInfo, "isUnderrun"); " resume="; playbackDiagnosticField(streamInfo, "isResume")
+        print "PlayerScreen: stream info measuredBitrateBps="; playbackDiagnosticField(streamInfo, "measuredBitrate"); " streamBitrateBps="; playbackDiagnosticField(streamInfo, "streamBitrate")
+        print "PlayerScreen: stream info url="; playbackDiagnosticRedactedUrl(streamUrl)
+    end if
+
+    print "PlayerScreen: media info reason="; reason; " videoFormat="; m.videoNode.videoFormat; " audioFormat="; m.videoNode.audioFormat; " timeToStartSeconds="; m.videoNode.timeToStartStreaming
+end sub
+
+function playbackDiagnosticField(data as Dynamic, fieldName as String) as Dynamic
+    if data = invalid or type(data) <> "roAssociativeArray" then return invalid
+    if data.DoesExist(fieldName) then return data[fieldName]
+
+    loweredFieldName = LCase(fieldName)
+    for each key in data
+        if LCase(key) = loweredFieldName then return data[key]
+    end for
+    return invalid
+end function
+
+function playbackDiagnosticString(value as Dynamic) as String
+    if value = invalid then return ""
+    valueType = type(value)
+    if valueType = "String" or valueType = "roString" then return value
+    return value.ToStr()
+end function
+
+function playbackDiagnosticNumber(value as Dynamic) as Float
+    if value = invalid then return 0.0
+    valueType = type(value)
+    if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value
+    if valueType = "Float" or valueType = "Double" or valueType = "roFloat" or valueType = "roDouble" then return value
+    if valueType = "String" or valueType = "roString" then return Val(value)
+    return 0.0
+end function
+
+function playbackDiagnosticRedactedUrl(url as String) as String
+    if url = "" then return ""
+    queryPosition = Instr(1, url, "?")
+    if queryPosition = 0 then return url
+    return Left(url, queryPosition - 1) + "?[redacted]"
+end function
+
 sub showStreamLoader(title as String)
     if m.streamLoaderGroup = invalid then return
+    if title <> "Buffering" and m.bufferingDebounceTimer <> invalid then m.bufferingDebounceTimer.control = "stop"
 
     m.streamLoaderGroup.visible = true
     if m.streamLoaderTitleLabel <> invalid then m.streamLoaderTitleLabel.text = title
@@ -1106,6 +1221,7 @@ sub showStreamLoader(title as String)
 end sub
 
 sub hideStreamLoader()
+    if m.bufferingDebounceTimer <> invalid then m.bufferingDebounceTimer.control = "stop"
     if m.streamLoaderGroup <> invalid then m.streamLoaderGroup.visible = false
     if m.streamLoaderFill <> invalid then m.streamLoaderFill.width = 0
 end sub
@@ -1155,11 +1271,11 @@ function tryNextPlaybackStream() as Boolean
     m.playbackOptionIndex = m.playbackOptionIndex + 1
     stream = currentPlaybackStream()
     print "PlayerScreen: retrying playback with stream option="; StrI(m.playbackOptionIndex + 1).Trim(); "/"; StrI(m.playbackOptions.Count()).Trim(); " label="; stream.label
-    print "PlayerScreen: retry stream format="; stream.streamFormat; " url="; stream.url
+    print "PlayerScreen: retry stream format="; stream.streamFormat; " url="; playbackDiagnosticRedactedUrl(stream.url)
 
     m.videoNode.control = "stop"
     m.playbackStarted = false
-    m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackName())
+    m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackNameForPlayback())
     showStreamLoader("Loading stream")
     m.videoNode.control = "play"
     return true
@@ -1199,12 +1315,12 @@ sub onVideoPositionChanged()
 end sub
 
 sub onAvailableAudioTracksChanged()
-    applySavedAudioPreference()
+    if m.playbackStarted = true then applySavedAudioPreference()
     updateControlLabels()
 end sub
 
 sub onAvailableSubtitleTracksChanged()
-    applySavedSubtitlePreference()
+    if autoApplySavedPlaybackPreferencesEnabled() then applySavedSubtitlePreference()
     updateControlLabels()
 end sub
 
@@ -1384,7 +1500,7 @@ end sub
 
 sub restartPlaybackFromBeginning()
     m.videoNode.control = "stop"
-    m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackName())
+    m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackNameForPlayback())
     m.videoNode.seek = 0
     startPlaybackAtPosition(0)
 end sub
@@ -1725,20 +1841,10 @@ function subtitleTrackMetadata(track as Dynamic, trackName as String) as Object
 end function
 
 function audioMenuItems() as Object
+    if hasAvailableAudioTracks() then return availableAudioMenuItems()
+
     items = []
-    if m.videoNode <> invalid and m.videoNode.availableAudioTracks <> invalid and m.videoNode.availableAudioTracks.Count() > 0
-        seen = {}
-        for each track in m.videoNode.availableAudioTracks
-            label = trackLabel(track)
-            if label = "" then label = "Audio " + StrI(items.Count() + 1).Trim()
-            appendUniqueTrackMenuItem(items, seen, {
-                id: trackIdentifier(track)
-                label: label
-                language: trackLanguage(track)
-                Track: trackIdentifier(track)
-            })
-        end for
-    else if m.playback <> invalid and m.playback.audioTracks <> invalid and m.playback.audioTracks.Count() > 0
+    if m.playback <> invalid and m.playback.audioTracks <> invalid and m.playback.audioTracks.Count() > 0
         seen = {}
         for each track in m.playback.audioTracks
             label = trackLabel(track)
@@ -1753,6 +1859,25 @@ function audioMenuItems() as Object
     else
         items.Push({ id: "default", label: "Default" })
     end if
+    return items
+end function
+
+function availableAudioMenuItems() as Object
+    items = []
+    if hasAvailableAudioTracks() <> true then return items
+
+    seen = {}
+    for each track in m.videoNode.availableAudioTracks
+        label = trackLabel(track)
+        if label = "" then label = "Audio " + StrI(items.Count() + 1).Trim()
+        appendUniqueTrackMenuItem(items, seen, {
+            id: trackIdentifier(track)
+            label: label
+            language: trackLanguage(track)
+            Track: trackIdentifier(track)
+        })
+    end for
+
     return items
 end function
 
@@ -1959,13 +2084,10 @@ sub applyAudioSelection(track as Object)
         m.videoNode.audioTrack = trackId
         audioSelectionApplied = true
     end if
-    currentTrack = m.videoNode.currentAudioTrack
-    if currentTrack = invalid or currentTrack = "" then currentTrack = trackId
-
     m.preferences["audioTrackId"] = trackId
     m.preferences["audioTrackLabel"] = trackLabel(track)
     m.preferences["audioTrackLanguage"] = trackLanguage(track)
-    m.preferences["audioCurrentTrack"] = currentTrack
+    m.preferences["audioCurrentTrack"] = trackId
     m.preferenceStore.save(m.playback, m.preferences)
     m.savedAudioPreferenceApplied = audioSelectionApplied
 
@@ -2080,7 +2202,7 @@ sub reloadPlaybackWithQuality(option as Object)
     wasPlaying = m.isPlaying
     clearPendingSeek()
     m.videoNode.control = "stop"
-    m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackName())
+    m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackNameForPlayback())
     if position > 0 then m.videoNode.seek = position
     if wasPlaying
         m.videoNode.control = "play"
@@ -2094,16 +2216,18 @@ sub applySavedPreferences()
 end sub
 
 sub applySavedAudioPreference()
+    if autoApplySavedAudioPreferenceEnabled() <> true then return
     if m.savedAudioPreferenceApplied = true then return
     if m.videoNode = invalid then return
+    if hasAvailableAudioTracks() <> true then return
 
     track = findSavedAudioTrack()
     if track = invalid then return
-    if hasAvailableAudioTracks() <> true then return
 
     trackId = menuItemId(track)
     if trackId = "" or trackId = "default" then return
 
+    print "PlayerScreen: applying saved audio track="; trackId; " label="; trackLabel(track)
     m.videoNode.audioTrack = trackId
     m.savedAudioPreferenceApplied = true
     updateControlLabels()
@@ -2119,28 +2243,35 @@ end function
 
 function findSavedAudioTrack() as Dynamic
     if m.preferences = invalid then return invalid
+    if hasAvailableAudioTracks() <> true then return invalid
 
     savedId = m.preferenceStore.stringField(m.preferences, "audioTrackId", "")
     savedLabel = m.preferenceStore.stringField(m.preferences, "audioTrackLabel", "")
     savedLanguage = m.preferenceStore.stringField(m.preferences, "audioTrackLanguage", "")
     if savedId = "" and savedLabel = "" and savedLanguage = "" then return invalid
 
-    items = audioMenuItems()
+    items = availableAudioMenuItems()
     if savedId <> ""
         for each item in items
             if menuItemId(item) = savedId then return item
         end for
     end if
 
-    if savedLanguage <> ""
+    if savedLabel <> "" and savedLanguage <> ""
         for each item in items
-            if LCase(trackLanguage(item)) = LCase(savedLanguage) then return item
+            if LCase(trackLabel(item)) = LCase(savedLabel) and LCase(trackLanguage(item)) = LCase(savedLanguage) then return item
         end for
     end if
 
     if savedLabel <> ""
         for each item in items
             if LCase(trackLabel(item)) = LCase(savedLabel) then return item
+        end for
+    end if
+
+    if savedLanguage <> ""
+        for each item in items
+            if LCase(trackLanguage(item)) = LCase(savedLanguage) then return item
         end for
     end if
 
@@ -2163,6 +2294,7 @@ function savedPreferredSubtitleTrackName() as String
 end function
 
 sub applySavedSubtitlePreference()
+    if autoApplySavedPlaybackPreferencesEnabled() <> true then return
     trackName = savedPreferredSubtitleTrackName()
     if trackName = "" then return
     if m.videoNode = invalid then return
@@ -2172,6 +2304,7 @@ sub applySavedSubtitlePreference()
 end sub
 
 sub applySavedQualityPreference()
+    if autoApplySavedPlaybackPreferencesEnabled() <> true then return
     if m.preferences = invalid or m.playbackOptions = invalid then return
 
     savedId = m.preferenceStore.stringField(m.preferences, "qualityId", "")
@@ -2207,6 +2340,7 @@ sub exitPlayer()
     m.statusClearTimer.control = "stop"
     m.resumePromptTimer.control = "stop"
     m.nextEpisodeCountdownTimer.control = "stop"
+    m.bufferingDebounceTimer.control = "stop"
     m.seekDebounceTimer.control = "stop"
     clearPendingSeek()
     m.videoNode.control = "stop"

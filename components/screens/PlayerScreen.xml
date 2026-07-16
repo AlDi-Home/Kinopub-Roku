@@ -70,6 +70,7 @@
     <Timer id="statusClearTimer" repeat="false" duration="2.5" />
     <Timer id="resumePromptTimer" repeat="true" duration="1" />
     <Timer id="nextEpisodeCountdownTimer" repeat="true" duration="1" />
+    <Timer id="bufferingDebounceTimer" repeat="false" duration="1.2" />
     <Timer id="seekDebounceTimer" repeat="false" duration="0.45" />
     <Timer id="seekSettleTimer" repeat="false" duration="2.5" />
   </children>

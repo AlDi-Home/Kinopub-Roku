@@ -745,7 +745,7 @@ grep -q 'm.preferences\["audioTrackLanguage"\]' components/screens/PlayerScreen.
 grep -q "m.preferenceStore.save(m.playback, m.preferences)" components/screens/PlayerScreen.brs
 grep -q "applySavedAudioPreference()" components/screens/PlayerScreen.brs
 grep -q "findSavedAudioTrack" components/screens/PlayerScreen.brs
-grep -q "m.videoNode.currentAudioTrack" components/screens/PlayerScreen.brs
+grep -q 'm.preferences\["audioCurrentTrack"\] = trackId' components/screens/PlayerScreen.brs
 grep -q "sub configureVideoHttpAgent" components/screens/PlayerScreen.brs
 grep -q 'CreateObject("roHttpAgent")' components/screens/PlayerScreen.brs
 grep -q 'AddHeader("User-Agent", "Roku/DVP-12.0 (12.0.0.0)")' components/screens/PlayerScreen.brs
@@ -754,10 +754,22 @@ grep -q 'content.HttpHeaders = \["User-Agent: Roku/DVP-12.0 (12.0.0.0)"\]' compo
 grep -q 'id="streamLoaderGroup"' components/screens/PlayerScreen.xml
 grep -q 'id="streamLoaderPercentLabel"' components/screens/PlayerScreen.xml
 grep -q 'id="streamLoaderFill"' components/screens/PlayerScreen.xml
+grep -q '<Timer id="bufferingDebounceTimer" repeat="false" duration="1.2"' components/screens/PlayerScreen.xml
 grep -q 'm.streamLoaderGroup = m.top.findNode("streamLoaderGroup")' components/screens/PlayerScreen.brs
+grep -q 'm.bufferingDebounceTimer = m.top.findNode("bufferingDebounceTimer")' components/screens/PlayerScreen.brs
+grep -q 'm.bufferingDebounceTimer.observeField("fire", "onBufferingDebounceTimer")' components/screens/PlayerScreen.brs
 grep -q 'm.videoNode.observeField("bufferingStatus", "onVideoBufferingStatusChanged")' components/screens/PlayerScreen.brs
+grep -q 'm.videoNode.observeField("downloadedSegment", "onVideoDownloadedSegmentChanged")' components/screens/PlayerScreen.brs
+grep -q 'm.videoNode.observeField("streamingSegment", "onVideoStreamingSegmentChanged")' components/screens/PlayerScreen.brs
+grep -q 'sub onVideoDownloadedSegmentChanged' components/screens/PlayerScreen.brs
+grep -q 'sub onVideoStreamingSegmentChanged' components/screens/PlayerScreen.brs
+grep -q 'sub printVideoPlaybackDiagnostics' components/screens/PlayerScreen.brs
+grep -q 'function playbackDiagnosticRedactedUrl' components/screens/PlayerScreen.brs
+grep -q 'throughputBps=' components/screens/PlayerScreen.brs
 grep -q 'showStreamLoader("Loading stream")' components/screens/PlayerScreen.brs
 grep -q 'showStreamLoader("Buffering")' components/screens/PlayerScreen.brs
+grep -q 'startBufferingDebounce()' components/screens/PlayerScreen.brs
+grep -q 'sub onBufferingDebounceTimer' components/screens/PlayerScreen.brs
 grep -q 'hideStreamLoader()' components/screens/PlayerScreen.brs
 grep -q 'function streamLoaderPercent' components/screens/PlayerScreen.brs
 if grep -A 8 'else if state = "error"' components/screens/PlayerScreen.brs | grep -q 'sendProgressUpdate("error")'; then
@@ -869,7 +881,8 @@ grep -q 'for each key in \["TrackName", "trackName", "url", "Url", "URL"\]' comp
 grep -q "function playbackContentNode" components/screens/PlayerScreen.brs
 grep -q "sub reloadPlaybackWithSubtitle" components/screens/PlayerScreen.brs
 grep -q "contentSubtitleTracksForPreferred" components/screens/PlayerScreen.brs
-grep -q "content = playbackContentNode(savedPreferredSubtitleTrackName())" components/screens/PlayerScreen.brs
+grep -q "function savedPreferredSubtitleTrackNameForPlayback" components/screens/PlayerScreen.brs
+grep -q "content = playbackContentNode(savedPreferredSubtitleTrackNameForPlayback())" components/screens/PlayerScreen.brs
 grep -A 8 "sub onAvailableSubtitleTracksChanged" components/screens/PlayerScreen.brs | grep -q "applySavedSubtitlePreference()"
 grep -A 40 "sub applySubtitleSelection" components/screens/PlayerScreen.brs | grep -q "m.videoNode.subtitleTrack = trackName"
 grep -q 'm.videoNode.observeField("availableSubtitleTracks", "onAvailableSubtitleTracksChanged")' components/screens/PlayerScreen.brs
