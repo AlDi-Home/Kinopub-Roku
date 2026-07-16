@@ -94,6 +94,8 @@ sub init()
     m.videoNode.observeField("state", "onVideoStateChanged")
     m.videoNode.observeField("position", "onVideoPositionChanged")
     m.videoNode.observeField("bufferingStatus", "onVideoBufferingStatusChanged")
+    m.videoNode.observeField("downloadedSegment", "onVideoDownloadedSegmentChanged")
+    m.videoNode.observeField("streamingSegment", "onVideoStreamingSegmentChanged")
     m.videoNode.observeField("availableAudioTracks", "onAvailableAudioTracksChanged")
     m.videoNode.observeField("availableSubtitleTracks", "onAvailableSubtitleTracksChanged")
     m.railHideTimer.observeField("fire", "onRailHideTimer")
@@ -359,7 +361,7 @@ sub logPlaybackStart()
 
     print "PlayerScreen: start playback itemId="; itemId; " mediaId="; mediaId; " title="; title
     print "PlayerScreen: stream option="; StrI(m.playbackOptionIndex + 1).Trim(); "/"; StrI(m.playbackOptions.Count()).Trim(); " label="; stream.label
-    print "PlayerScreen: stream format="; streamFormat; " url="; streamUrl
+    print "PlayerScreen: stream format="; streamFormat; " url="; playbackDiagnosticRedactedUrl(streamUrl)
 end sub
 
 sub startPlaybackAtPosition(startPosition as Integer)
@@ -1042,6 +1044,7 @@ sub onVideoStateChanged(event as Object)
     state = event.getData()
     print "PlayerScreen: video state="; state
     if state = "playing"
+        printVideoPlaybackDiagnostics("playing")
         hideStreamLoader()
         m.isPlaying = true
         m.playbackStarted = true
@@ -1057,6 +1060,7 @@ sub onVideoStateChanged(event as Object)
         updatePlayPauseControlLabel()
         showRail()
     else if state = "buffering"
+        printVideoPlaybackDiagnostics("buffering")
         startBufferingDebounce()
         m.isPlaying = false
         m.railHideTimer.control = "stop"
@@ -1109,9 +1113,91 @@ sub onBufferingDebounceTimer()
 end sub
 
 sub onVideoBufferingStatusChanged()
+    status = invalid
+    if m.videoNode <> invalid then status = m.videoNode.bufferingStatus
+    if status <> invalid and type(status) = "roAssociativeArray"
+        print "PlayerScreen: buffering status percentage="; playbackDiagnosticField(status, "percentage"); " underrun="; playbackDiagnosticField(status, "isUnderrun"); " position="; currentPositionSeconds()
+    end if
+
     if m.streamLoaderGroup = invalid or m.streamLoaderGroup.visible <> true then return
     showStreamLoader("Buffering")
 end sub
+
+sub onVideoDownloadedSegmentChanged(event as Object)
+    segment = event.getData()
+    if segment = invalid or type(segment) <> "roAssociativeArray" then return
+
+    downloadDurationMs = playbackDiagnosticNumber(playbackDiagnosticField(segment, "DownloadDuration"))
+    segmentSize = playbackDiagnosticNumber(playbackDiagnosticField(segment, "SegSize"))
+    measuredThroughputBps = 0
+    if downloadDurationMs > 0 and segmentSize > 0
+        measuredThroughputBps = Int((segmentSize * 8.0 * 1000.0) / downloadDurationMs)
+    end if
+
+    segmentUrl = playbackDiagnosticString(playbackDiagnosticField(segment, "SegUrl"))
+    print "PlayerScreen: downloaded segment status="; playbackDiagnosticField(segment, "Status"); " sequence="; playbackDiagnosticField(segment, "SegSequence"); " type="; playbackDiagnosticField(segment, "SegType")
+    print "PlayerScreen: downloaded segment start="; playbackDiagnosticField(segment, "SegStart"); " mediaDurationMs="; playbackDiagnosticField(segment, "SegDuration"); " downloadDurationMs="; downloadDurationMs
+    print "PlayerScreen: downloaded segment sizeBytes="; segmentSize; " throughputBps="; measuredThroughputBps; " declaredBitrateBps="; playbackDiagnosticField(segment, "BitrateBPS")
+    print "PlayerScreen: downloaded segment width="; playbackDiagnosticField(segment, "Width"); " height="; playbackDiagnosticField(segment, "Height"); " url="; playbackDiagnosticRedactedUrl(segmentUrl)
+end sub
+
+sub onVideoStreamingSegmentChanged(event as Object)
+    segment = event.getData()
+    if segment = invalid or type(segment) <> "roAssociativeArray" then return
+
+    segmentUrl = playbackDiagnosticString(playbackDiagnosticField(segment, "segUrl"))
+    print "PlayerScreen: streaming segment sequence="; playbackDiagnosticField(segment, "segSequence"); " type="; playbackDiagnosticField(segment, "segTypeStr"); " start="; playbackDiagnosticField(segment, "segStart")
+    print "PlayerScreen: streaming segment bitrateBps="; playbackDiagnosticField(segment, "segBitrateBps"); " width="; playbackDiagnosticField(segment, "width"); " height="; playbackDiagnosticField(segment, "height")
+    print "PlayerScreen: streaming segment latencyMs="; playbackDiagnosticField(segment, "latency"); " url="; playbackDiagnosticRedactedUrl(segmentUrl)
+end sub
+
+sub printVideoPlaybackDiagnostics(reason as String)
+    if m.videoNode = invalid then return
+
+    streamInfo = m.videoNode.streamInfo
+    if streamInfo <> invalid and type(streamInfo) = "roAssociativeArray"
+        streamUrl = playbackDiagnosticString(playbackDiagnosticField(streamInfo, "streamUrl"))
+        print "PlayerScreen: stream info reason="; reason; " underrun="; playbackDiagnosticField(streamInfo, "isUnderrun"); " resume="; playbackDiagnosticField(streamInfo, "isResume")
+        print "PlayerScreen: stream info measuredBitrateBps="; playbackDiagnosticField(streamInfo, "measuredBitrate"); " streamBitrateBps="; playbackDiagnosticField(streamInfo, "streamBitrate")
+        print "PlayerScreen: stream info url="; playbackDiagnosticRedactedUrl(streamUrl)
+    end if
+
+    print "PlayerScreen: media info reason="; reason; " videoFormat="; m.videoNode.videoFormat; " audioFormat="; m.videoNode.audioFormat; " timeToStartSeconds="; m.videoNode.timeToStartStreaming
+end sub
+
+function playbackDiagnosticField(data as Dynamic, fieldName as String) as Dynamic
+    if data = invalid or type(data) <> "roAssociativeArray" then return invalid
+    if data.DoesExist(fieldName) then return data[fieldName]
+
+    loweredFieldName = LCase(fieldName)
+    for each key in data
+        if LCase(key) = loweredFieldName then return data[key]
+    end for
+    return invalid
+end function
+
+function playbackDiagnosticString(value as Dynamic) as String
+    if value = invalid then return ""
+    valueType = type(value)
+    if valueType = "String" or valueType = "roString" then return value
+    return value.ToStr()
+end function
+
+function playbackDiagnosticNumber(value as Dynamic) as Float
+    if value = invalid then return 0.0
+    valueType = type(value)
+    if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value
+    if valueType = "Float" or valueType = "Double" or valueType = "roFloat" or valueType = "roDouble" then return value
+    if valueType = "String" or valueType = "roString" then return Val(value)
+    return 0.0
+end function
+
+function playbackDiagnosticRedactedUrl(url as String) as String
+    if url = "" then return ""
+    queryPosition = Instr(1, url, "?")
+    if queryPosition = 0 then return url
+    return Left(url, queryPosition - 1) + "?[redacted]"
+end function
 
 sub showStreamLoader(title as String)
     if m.streamLoaderGroup = invalid then return
@@ -1185,7 +1271,7 @@ function tryNextPlaybackStream() as Boolean
     m.playbackOptionIndex = m.playbackOptionIndex + 1
     stream = currentPlaybackStream()
     print "PlayerScreen: retrying playback with stream option="; StrI(m.playbackOptionIndex + 1).Trim(); "/"; StrI(m.playbackOptions.Count()).Trim(); " label="; stream.label
-    print "PlayerScreen: retry stream format="; stream.streamFormat; " url="; stream.url
+    print "PlayerScreen: retry stream format="; stream.streamFormat; " url="; playbackDiagnosticRedactedUrl(stream.url)
 
     m.videoNode.control = "stop"
     m.playbackStarted = false

@@ -759,6 +759,13 @@ grep -q 'm.streamLoaderGroup = m.top.findNode("streamLoaderGroup")' components/s
 grep -q 'm.bufferingDebounceTimer = m.top.findNode("bufferingDebounceTimer")' components/screens/PlayerScreen.brs
 grep -q 'm.bufferingDebounceTimer.observeField("fire", "onBufferingDebounceTimer")' components/screens/PlayerScreen.brs
 grep -q 'm.videoNode.observeField("bufferingStatus", "onVideoBufferingStatusChanged")' components/screens/PlayerScreen.brs
+grep -q 'm.videoNode.observeField("downloadedSegment", "onVideoDownloadedSegmentChanged")' components/screens/PlayerScreen.brs
+grep -q 'm.videoNode.observeField("streamingSegment", "onVideoStreamingSegmentChanged")' components/screens/PlayerScreen.brs
+grep -q 'sub onVideoDownloadedSegmentChanged' components/screens/PlayerScreen.brs
+grep -q 'sub onVideoStreamingSegmentChanged' components/screens/PlayerScreen.brs
+grep -q 'sub printVideoPlaybackDiagnostics' components/screens/PlayerScreen.brs
+grep -q 'function playbackDiagnosticRedactedUrl' components/screens/PlayerScreen.brs
+grep -q 'throughputBps=' components/screens/PlayerScreen.brs
 grep -q 'showStreamLoader("Loading stream")' components/screens/PlayerScreen.brs
 grep -q 'showStreamLoader("Buffering")' components/screens/PlayerScreen.brs
 grep -q 'startBufferingDebounce()' components/screens/PlayerScreen.brs
