@@ -43,7 +43,16 @@ local defaults with `APP_VERSION`, `APP_SHA`, and `PACKAGE_NAME`.
 ### 3. Sideload on Roku
 
 1. Enable Developer Mode on your Roku device.
+
+Steps to Enable Developer ModeEnter the remote sequence: 
+From the main home screen, press the Home button 3 times, then Up 2 times, then Right, Left, Right, Left, Right.Open 
+installer: Select Enable installer and restart.
+Accept agreement: Scroll down and accept the Developer Tools License Agreement.
+Set password: Create and confirm a password for your device, then select Set password and restart.
+Log in via browser: Type your Roku device's IP address into a computer web browser on the same network, log in with the username Roku dev and your password to access the application installer.
 2. Open the Roku developer installer in a browser:
+
+U/P: rokudev / pwd
 
 ```text
 http://<roku-ip-address>
