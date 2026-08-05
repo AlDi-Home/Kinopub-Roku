@@ -2,6 +2,7 @@
 set -euo pipefail
 
 required_files=(
+  VERSION
   manifest
   source/main.brs
   source/services/KinoApiClient.brs

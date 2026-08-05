@@ -4,13 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="$ROOT_DIR/source/config"
 OUTPUT_FILE="$OUTPUT_DIR/BuildInfo.brs"
+VERSION_FILE="$ROOT_DIR/VERSION"
+MANIFEST_FILE="$ROOT_DIR/manifest"
 
-APP_VERSION="${APP_VERSION:-0.0.1}"
+APP_VERSION="${APP_VERSION:-$(cat "$VERSION_FILE")}"
+APP_VERSION="$(printf '%s' "$APP_VERSION" | tr -d '[:space:]')"
 APP_SHA="${APP_SHA:-$(git -C "$ROOT_DIR" rev-parse --short=7 HEAD 2>/dev/null || printf 'unknown')}"
 APP_SHA="${APP_SHA:0:7}"
 
 if [[ ! "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "APP_VERSION must start with a semantic version such as 0.0.1." >&2
+  echo "APP_VERSION must start with a semantic version such as 0.1.0." >&2
   exit 1
 fi
 
@@ -40,4 +43,35 @@ with open(output_file, "w", encoding="utf-8") as output:
     output.write(content)
 PY
 
-echo "Generated source/config/BuildInfo.brs ($APP_VERSION-$APP_SHA)"
+python3 - "$MANIFEST_FILE" "$APP_VERSION" <<'PY'
+import re
+import sys
+
+manifest_file, version = sys.argv[1:]
+match = re.match(r"^(\d+)\.(\d+)\.(\d+)", version)
+if not match:
+    raise SystemExit("APP_VERSION must start with major.minor.patch.")
+
+major, minor, patch = (int(value) for value in match.groups())
+if major > 999 or minor > 999 or patch > 99999:
+    raise SystemExit("APP_VERSION exceeds Roku manifest version limits.")
+
+replacements = {
+    "major_version": str(major),
+    "minor_version": str(minor),
+    "build_version": f"{patch:05d}",
+}
+
+with open(manifest_file, encoding="utf-8") as source:
+    lines = source.readlines()
+
+with open(manifest_file, "w", encoding="utf-8") as output:
+    for line in lines:
+        key = line.split("=", 1)[0]
+        if key in replacements:
+            output.write(f"{key}={replacements[key]}\n")
+        else:
+            output.write(line)
+PY
+
+echo "Generated source/config/BuildInfo.brs ($APP_VERSION-$APP_SHA); synced manifest version"
