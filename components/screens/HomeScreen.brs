@@ -2163,6 +2163,7 @@ end sub
 
 sub loadInitialHistory()
     m.historyItems = []
+    m.historySeenItemIds = {}
     m.historyCardNodes = []
     m.historyCardBgNodes = []
     m.historyCurrentPage = 0
@@ -2234,10 +2235,10 @@ end sub
 
 function continueRailsFromResponse(response as Object) as Object
     rails = []
-    historyRail = continueRailFromPage("history", "History", response.history)
-    if historyRail <> invalid then rails.Push(historyRail)
     newEpisodesRail = continueRailFromPage("newEpisodes", "New Episodes", response.newEpisodes)
     if newEpisodesRail <> invalid then rails.Push(newEpisodesRail)
+    historyRail = continueRailFromPage("history", "History", response.history)
+    if historyRail <> invalid then rails.Push(historyRail)
     return rails
 end function
 
@@ -2350,8 +2351,15 @@ end sub
 
 sub appendHistoryItems(items as Dynamic)
     if items = invalid then return
+    if m.historySeenItemIds = invalid then m.historySeenItemIds = {}
     for each item in items
-        m.historyItems.Push(item)
+        isDuplicate = false
+        if item.itemId > 0
+            key = StrI(item.itemId).Trim()
+            if m.historySeenItemIds.DoesExist(key) then isDuplicate = true
+            m.historySeenItemIds[key] = true
+        end if
+        if isDuplicate <> true then m.historyItems.Push(item)
     end for
     if items.Count() = 0 then m.historyReachedEnd = true
 end sub

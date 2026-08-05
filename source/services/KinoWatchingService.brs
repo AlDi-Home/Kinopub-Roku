@@ -25,6 +25,7 @@ function kinoWatchingListSerials(accessToken as String, page as Integer, perpage
         access_token: accessToken
         page: page
         perpage: perpage
+        subscribed: 1
     }
 
     response = m.client.get("/v1/watching/serials", queryParams, m.client.defaultTimeoutMs)
@@ -43,7 +44,7 @@ function kinoWatchingNormalizeSerialsResponse(body as Dynamic, requestedPage as 
 
     for each entry in serials
         normalized = m.normalizeSerialEntry(entry, typeMap)
-        if normalized.itemId > 0 then items.Push(normalized)
+        if normalized.itemId > 0 and normalized.type = "serial" then items.Push(normalized)
     end for
 
     return { ok: true, items: items, pagination: pagination }

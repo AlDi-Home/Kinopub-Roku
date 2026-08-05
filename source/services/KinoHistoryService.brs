@@ -43,8 +43,16 @@ function kinoHistoryNormalizeResponse(body as Dynamic, requestedPage as Integer,
         return { ok: false, items: [], pagination: pagination, error: "invalid_response", message: "History response did not include a history list.", status: 0 }
     end if
 
+    seenItemIds = {}
     for each entry in body.history
-        items.Push(m.normalizeEntry(entry, typeMap))
+        normalized = m.normalizeEntry(entry, typeMap)
+        isDuplicate = false
+        if normalized.itemId > 0
+            key = StrI(normalized.itemId).Trim()
+            if seenItemIds.DoesExist(key) then isDuplicate = true
+            seenItemIds[key] = true
+        end if
+        if isDuplicate <> true then items.Push(normalized)
     end for
 
     if body.DoesExist("pagination") and body.pagination <> invalid and type(body.pagination) = "roAssociativeArray"
