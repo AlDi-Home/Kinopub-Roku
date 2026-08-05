@@ -122,7 +122,7 @@ sub showError(result as Object)
     m.pollTimer.control = "stop"
     m.expiryTimer.control = "stop"
     m.status = "error"
-    if result.error = "invalid_client"
+    if result.error = "invalid_client" or result.error = "incorrect_client_credentials"
         m.statusLabel.text = "KinoAPI credentials are invalid."
     else if result.error = "timeout"
         m.statusLabel.text = "Request timed out. Press OK to retry."
