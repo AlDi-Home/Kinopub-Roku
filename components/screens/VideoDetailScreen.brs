@@ -238,6 +238,19 @@ sub buildPlayableModel()
         episodes = playableEpisodesForSeason(seasonIndex)
 
         for episodeIndex = 0 to episodes.Count() - 1
+            episode = episodes[episodeIndex]
+            if episode.isPlayable = true and episode.watched <> true
+                m.currentSeasonIndex = seasonIndex
+                m.currentEpisodeIndex = episodeIndex
+                return
+            end if
+        end for
+    end for
+
+    for seasonIndex = 0 to m.seasons.Count() - 1
+        episodes = playableEpisodesForSeason(seasonIndex)
+
+        for episodeIndex = 0 to episodes.Count() - 1
             if episodes[episodeIndex].isPlayable = true
                 m.currentSeasonIndex = seasonIndex
                 m.currentEpisodeIndex = episodeIndex
