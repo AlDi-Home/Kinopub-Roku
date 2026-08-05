@@ -121,6 +121,12 @@ function kinoApiNormalizeError(status as Integer, body as Dynamic, rawBody = "" 
     if status = 401
         errorCode = "unauthorized"
         message = "Device authorization was removed. Sign in again."
+    else if status = 502 or status = 503 or status = 504
+        errorCode = "server_unavailable"
+        message = "KinoPub service is temporarily unavailable. Please try again later."
+    else if status = 500
+        errorCode = "server_error"
+        message = "KinoPub service encountered an error. Please try again later."
     end if
 
     if body <> invalid and type(body) = "roAssociativeArray"
@@ -132,7 +138,7 @@ function kinoApiNormalizeError(status as Integer, body as Dynamic, rawBody = "" 
         if rawError <> "" then errorCode = rawError
         rawMessage = kinoApiRawJsonValue(rawBody, "error_description")
         if rawMessage = "" then rawMessage = kinoApiRawJsonValue(rawBody, "message")
-        if rawMessage <> "" then message = rawMessage else message = rawBody
+        if rawMessage <> "" then message = rawMessage
     end if
 
     return { ok: false, status: status, error: errorCode, message: message }
