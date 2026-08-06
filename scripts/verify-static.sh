@@ -126,7 +126,7 @@ grep -q "accessexpiresat = now + 3600" source/services/TokenStore.brs
 grep -q "tokens.refreshexpiresat <= now" source/services/TokenStore.brs
 grep -q "AuthTask: token fields access=" components/tasks/AuthTask.brs
 grep -q "authTaskNotifyAllowsHome(tokens.accesstoken" components/tasks/AuthTask.brs
-grep -q "notifyDevice(result.tokens.accessToken)" components/tasks/AuthTask.brs
+grep -q "notifyDevice(result.tokens.accesstoken)" components/tasks/AuthTask.brs
 grep -q "authTaskNotifyAllowsHome" components/tasks/AuthTask.brs
 grep -q 'notifyResult.status = 401' components/tasks/AuthTask.brs
 grep -q 'notifyResult.error = "unauthorized"' components/tasks/AuthTask.brs

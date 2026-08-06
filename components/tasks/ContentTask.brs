@@ -3,9 +3,9 @@ sub init()
 end sub
 
 sub runContentTask()
-    tokenStore = TokenStore()
+    tokenStoreService = TokenStore()
     client = KinoApiClient(KinoConfig())
-    authService = KinoAuthService(client, tokenStore)
+    authService = KinoAuthService(client, tokenStoreService)
     bookmarkService = KinoBookmarkService(client)
     browseService = KinoBrowseService(client)
     typeService = KinoContentTypeService(client)
@@ -21,52 +21,52 @@ sub runContentTask()
     print "ContentTask: running command "; command
 
     if command = "loadHistoryPage"
-        m.top.response = contentTaskLoadHistoryPage(tokenStore, authService, historyService, typeService, request)
+        m.top.response = contentTaskLoadHistoryPage(tokenStoreService, authService, historyService, typeService, request)
     else if command = "loadContinueSummary"
-        m.top.response = contentTaskLoadContinueSummary(tokenStore, authService, historyService, watchingService, typeService, request)
+        m.top.response = contentTaskLoadContinueSummary(tokenStoreService, authService, historyService, watchingService, typeService, request)
     else if command = "loadContinueHistoryPage"
-        m.top.response = contentTaskLoadContinueHistoryPage(tokenStore, authService, historyService, typeService, request)
+        m.top.response = contentTaskLoadContinueHistoryPage(tokenStoreService, authService, historyService, typeService, request)
     else if command = "loadContinueNewEpisodesPage"
-        m.top.response = contentTaskLoadContinueNewEpisodesPage(tokenStore, authService, watchingService, typeService, request)
+        m.top.response = contentTaskLoadContinueNewEpisodesPage(tokenStoreService, authService, watchingService, typeService, request)
     else if command = "loadHome"
-        m.top.response = contentTaskLoadHome(tokenStore, authService, homeService, typeService, request)
+        m.top.response = contentTaskLoadHome(tokenStoreService, authService, homeService, typeService, request)
     else if command = "loadItemDetail"
-        m.top.response = contentTaskLoadItemDetail(tokenStore, authService, itemService, request)
+        m.top.response = contentTaskLoadItemDetail(tokenStoreService, authService, itemService, request)
     else if command = "refreshMediaLinks"
-        m.top.response = contentTaskRefreshMediaLinks(tokenStore, authService, itemService, request)
+        m.top.response = contentTaskRefreshMediaLinks(tokenStoreService, authService, itemService, request)
     else if command = "loadSearchOptions"
-        m.top.response = contentTaskLoadSearchOptions(tokenStore, authService, typeService)
+        m.top.response = contentTaskLoadSearchOptions(tokenStoreService, authService, typeService)
     else if command = "searchItems"
-        m.top.response = contentTaskSearchItems(tokenStore, authService, searchService, typeService, request)
+        m.top.response = contentTaskSearchItems(tokenStoreService, authService, searchService, typeService, request)
     else if command = "loadUserInfo"
-        m.top.response = contentTaskLoadUserInfo(tokenStore, authService, userService)
+        m.top.response = contentTaskLoadUserInfo(tokenStoreService, authService, userService)
     else if command = "loadBookmarkFolders"
-        m.top.response = contentTaskLoadBookmarkFolders(tokenStore, authService, bookmarkService)
+        m.top.response = contentTaskLoadBookmarkFolders(tokenStoreService, authService, bookmarkService)
     else if command = "loadBookmarkFolderItems"
-        m.top.response = contentTaskLoadBookmarkFolderItems(tokenStore, authService, bookmarkService, typeService, request)
+        m.top.response = contentTaskLoadBookmarkFolderItems(tokenStoreService, authService, bookmarkService, typeService, request)
     else if command = "loadBrowseOptions"
-        m.top.response = contentTaskLoadBrowseOptions(tokenStore, authService, browseService, typeService)
+        m.top.response = contentTaskLoadBrowseOptions(tokenStoreService, authService, browseService, typeService)
     else if command = "loadBrowseItems"
-        m.top.response = contentTaskLoadBrowseItems(tokenStore, authService, browseService, typeService, request)
+        m.top.response = contentTaskLoadBrowseItems(tokenStoreService, authService, browseService, typeService, request)
     else if command = "probeLiveTv" or command = "loadLiveTv"
-        m.top.response = contentTaskLoadLiveTv(tokenStore, authService, tvService, command)
+        m.top.response = contentTaskLoadLiveTv(tokenStoreService, authService, tvService, command)
     else if command = "loadItemBookmarkFolders"
-        m.top.response = contentTaskLoadItemBookmarkFolders(tokenStore, authService, bookmarkService, request)
+        m.top.response = contentTaskLoadItemBookmarkFolders(tokenStoreService, authService, bookmarkService, request)
     else if command = "toggleItemBookmark"
-        m.top.response = contentTaskToggleItemBookmark(tokenStore, authService, bookmarkService, request)
+        m.top.response = contentTaskToggleItemBookmark(tokenStoreService, authService, bookmarkService, request)
     else if command = "savePlaybackProgress"
-        m.top.response = contentTaskSavePlaybackProgress(tokenStore, authService, watchingService, request)
+        m.top.response = contentTaskSavePlaybackProgress(tokenStoreService, authService, watchingService, request)
     else if command = "markPlaybackWatched"
-        m.top.response = contentTaskMarkPlaybackWatched(tokenStore, authService, watchingService, request)
+        m.top.response = contentTaskMarkPlaybackWatched(tokenStoreService, authService, watchingService, request)
     else if command = "toggleEpisodeWatched"
-        m.top.response = contentTaskToggleEpisodeWatched(tokenStore, authService, watchingService, request)
+        m.top.response = contentTaskToggleEpisodeWatched(tokenStoreService, authService, watchingService, request)
     else
         m.top.response = { command: command, ok: false, error: "unknown_command", message: "Unknown content task command." }
     end if
 end sub
 
-function contentTaskLoadSearchOptions(tokenStore as Object, authService as Object, typeService as Object) as Object
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load Search filters.")
+function contentTaskLoadSearchOptions(tokenStoreService as Object, authService as Object, typeService as Object) as Object
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load Search filters.")
     if tokenResult.ok <> true
         tokenResult.command = "loadSearchOptions"
         tokenResult.typeMap = {}
@@ -80,8 +80,8 @@ function contentTaskLoadSearchOptions(tokenStore as Object, authService as Objec
     }
 end function
 
-function contentTaskLoadLiveTv(tokenStore as Object, authService as Object, tvService as Object, command as String) as Object
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load Live.")
+function contentTaskLoadLiveTv(tokenStoreService as Object, authService as Object, tvService as Object, command as String) as Object
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load Live.")
     if tokenResult.ok <> true
         tokenResult.command = command
         tokenResult.items = []
@@ -93,12 +93,12 @@ function contentTaskLoadLiveTv(tokenStore as Object, authService as Object, tvSe
     return result
 end function
 
-function contentTaskLoadHome(tokenStore as Object, authService as Object, homeService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadHome(tokenStoreService as Object, authService as Object, homeService as Object, typeService as Object, request as Dynamic) as Object
     perpage = contentTaskIntegerField(request, "perpage", 12)
     if perpage < 1 then perpage = 12
     if perpage > 20 then perpage = 20
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load Home.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load Home.")
     if tokenResult.ok <> true
         tokenResult.command = "loadHome"
         tokenResult.perpage = perpage
@@ -112,14 +112,14 @@ function contentTaskLoadHome(tokenStore as Object, authService as Object, homeSe
     return result
 end function
 
-function contentTaskLoadHistoryPage(tokenStore as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadHistoryPage(tokenStoreService as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic) as Object
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
     if page < 1 then page = 1
     if perpage < 1 then perpage = 20
     if perpage > 50 then perpage = 50
 
-    tokenResult = contentTaskUsableTokens(tokenStore, authService)
+    tokenResult = contentTaskUsableTokens(tokenStoreService, authService)
 
     if tokenResult.ok <> true
         if tokenResult.error = "auth_required"
@@ -154,19 +154,19 @@ function contentTaskContinuePageRequest(request as Dynamic) as Object
     return { page: page, perpage: perpage }
 end function
 
-function contentTaskLoadContinueHistoryPage(tokenStore as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic) as Object
-    result = contentTaskLoadHistoryPage(tokenStore, authService, historyService, typeService, request)
+function contentTaskLoadContinueHistoryPage(tokenStoreService as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic) as Object
+    result = contentTaskLoadHistoryPage(tokenStoreService, authService, historyService, typeService, request)
     result.command = "loadContinueHistoryPage"
     result.kind = "history"
     return result
 end function
 
-function contentTaskLoadContinueNewEpisodesPage(tokenStore as Object, authService as Object, watchingService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadContinueNewEpisodesPage(tokenStoreService as Object, authService as Object, watchingService as Object, typeService as Object, request as Dynamic) as Object
     pageRequest = contentTaskContinuePageRequest(request)
     page = pageRequest.page
     perpage = pageRequest.perpage
 
-    tokenResult = contentTaskUsableTokens(tokenStore, authService)
+    tokenResult = contentTaskUsableTokens(tokenStoreService, authService)
 
     if tokenResult.ok <> true
         if tokenResult.error = "auth_required"
@@ -193,18 +193,18 @@ function contentTaskLoadContinueNewEpisodesPage(tokenStore as Object, authServic
     return result
 end function
 
-function contentTaskLoadContinueSummary(tokenStore as Object, authService as Object, historyService as Object, watchingService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadContinueSummary(tokenStoreService as Object, authService as Object, historyService as Object, watchingService as Object, typeService as Object, request as Dynamic) as Object
     perpage = contentTaskIntegerField(request, "perpage", 10)
     if perpage < 1 then perpage = 10
     if perpage > 20 then perpage = 20
     pageRequest = { page: 1, perpage: perpage }
 
-    history = contentTaskLoadContinueHistoryPage(tokenStore, authService, historyService, typeService, pageRequest)
+    history = contentTaskLoadContinueHistoryPage(tokenStoreService, authService, historyService, typeService, pageRequest)
     if history.error = "auth_required"
         return { command: "loadContinueSummary", ok: false, error: "auth_required", message: history.message, history: history }
     end if
 
-    newEpisodes = contentTaskLoadContinueNewEpisodesPage(tokenStore, authService, watchingService, typeService, pageRequest)
+    newEpisodes = contentTaskLoadContinueNewEpisodesPage(tokenStoreService, authService, watchingService, typeService, pageRequest)
     if newEpisodes.error = "auth_required"
         return { command: "loadContinueSummary", ok: false, error: "auth_required", message: newEpisodes.message, history: history, newEpisodes: newEpisodes }
     end if
@@ -214,14 +214,14 @@ function contentTaskLoadContinueSummary(tokenStore as Object, authService as Obj
     return { command: "loadContinueSummary", ok: ok, rails: [history, newEpisodes], history: history, newEpisodes: newEpisodes }
 end function
 
-function contentTaskLoadItemDetail(tokenStore as Object, authService as Object, itemService as Object, request as Dynamic) as Object
+function contentTaskLoadItemDetail(tokenStoreService as Object, authService as Object, itemService as Object, request as Dynamic) as Object
     itemId = contentTaskIntegerField(request, "itemId", 0)
     mediaId = contentTaskIntegerField(request, "mediaId", 0)
     if itemId <= 0
         return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, error: "invalid_item", message: "Unable to open this video.", status: 0 }
     end if
 
-    tokenResult = contentTaskUsableTokens(tokenStore, authService)
+    tokenResult = contentTaskUsableTokens(tokenStoreService, authService)
 
     if tokenResult.ok <> true
         if tokenResult.error = "auth_required"
@@ -265,7 +265,7 @@ function contentTaskLoadItemDetail(tokenStore as Object, authService as Object, 
     return result
 end function
 
-function contentTaskRefreshMediaLinks(tokenStore as Object, authService as Object, itemService as Object, request as Dynamic) as Object
+function contentTaskRefreshMediaLinks(tokenStoreService as Object, authService as Object, itemService as Object, request as Dynamic) as Object
     media = invalid
     if request <> invalid and type(request) = "roAssociativeArray" and request.DoesExist("media") then media = request.media
     mediaId = contentTaskIntegerField(media, "mediaId", 0)
@@ -273,7 +273,7 @@ function contentTaskRefreshMediaLinks(tokenStore as Object, authService as Objec
         return { command: "refreshMediaLinks", ok: false, mediaId: mediaId, error: "invalid_media", message: "Unable to refresh this video.", status: 0 }
     end if
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to play this video.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to play this video.")
     if tokenResult.ok <> true
         tokenResult.command = "refreshMediaLinks"
         tokenResult.mediaId = mediaId
@@ -286,7 +286,7 @@ function contentTaskRefreshMediaLinks(tokenStore as Object, authService as Objec
     return result
 end function
 
-function contentTaskSearchItems(tokenStore as Object, authService as Object, searchService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskSearchItems(tokenStoreService as Object, authService as Object, searchService as Object, typeService as Object, request as Dynamic) as Object
     query = contentTaskStringField(request, "q", "").Trim()
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
@@ -302,7 +302,7 @@ function contentTaskSearchItems(tokenStore as Object, authService as Object, sea
         return { command: "searchItems", ok: false, q: query, page: page, perpage: perpage, sortByYear: sortByYear, contentType: contentType, searchField: searchField, error: "invalid_query", message: "Enter a search term.", status: 0 }
     end if
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to search.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to search.")
     if tokenResult.ok <> true
         tokenResult.command = "searchItems"
         tokenResult.q = query
@@ -326,8 +326,8 @@ function contentTaskSearchItems(tokenStore as Object, authService as Object, sea
     return result
 end function
 
-function contentTaskLoadUserInfo(tokenStore as Object, authService as Object, userService as Object) as Object
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load account information.")
+function contentTaskLoadUserInfo(tokenStoreService as Object, authService as Object, userService as Object) as Object
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load account information.")
     if tokenResult.ok <> true
         tokenResult.command = "loadUserInfo"
         return tokenResult
@@ -338,8 +338,8 @@ function contentTaskLoadUserInfo(tokenStore as Object, authService as Object, us
     return result
 end function
 
-function contentTaskLoadBookmarkFolders(tokenStore as Object, authService as Object, bookmarkService as Object) as Object
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load bookmarks.")
+function contentTaskLoadBookmarkFolders(tokenStoreService as Object, authService as Object, bookmarkService as Object) as Object
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load bookmarks.")
     if tokenResult.ok <> true
         tokenResult.command = "loadBookmarkFolders"
         return tokenResult
@@ -350,12 +350,12 @@ function contentTaskLoadBookmarkFolders(tokenStore as Object, authService as Obj
     return result
 end function
 
-function contentTaskLoadBookmarkFolderItems(tokenStore as Object, authService as Object, bookmarkService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadBookmarkFolderItems(tokenStoreService as Object, authService as Object, bookmarkService as Object, typeService as Object, request as Dynamic) as Object
     folderId = contentTaskIntegerField(request, "folderId", 0)
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load bookmark folder.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load bookmark folder.")
     if tokenResult.ok <> true
         tokenResult.command = "loadBookmarkFolderItems"
         tokenResult.folderId = folderId
@@ -371,10 +371,10 @@ function contentTaskLoadBookmarkFolderItems(tokenStore as Object, authService as
     return result
 end function
 
-function contentTaskLoadItemBookmarkFolders(tokenStore as Object, authService as Object, bookmarkService as Object, request as Dynamic) as Object
+function contentTaskLoadItemBookmarkFolders(tokenStoreService as Object, authService as Object, bookmarkService as Object, request as Dynamic) as Object
     itemId = contentTaskIntegerField(request, "itemId", 0)
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load bookmark status.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load bookmark status.")
     if tokenResult.ok <> true
         tokenResult.command = "loadItemBookmarkFolders"
         tokenResult.itemId = itemId
@@ -387,11 +387,11 @@ function contentTaskLoadItemBookmarkFolders(tokenStore as Object, authService as
     return result
 end function
 
-function contentTaskToggleItemBookmark(tokenStore as Object, authService as Object, bookmarkService as Object, request as Dynamic) as Object
+function contentTaskToggleItemBookmark(tokenStoreService as Object, authService as Object, bookmarkService as Object, request as Dynamic) as Object
     itemId = contentTaskIntegerField(request, "itemId", 0)
     folderId = contentTaskIntegerField(request, "folderId", 0)
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to update bookmark.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to update bookmark.")
     if tokenResult.ok <> true
         tokenResult.command = "toggleItemBookmark"
         tokenResult.itemId = itemId
@@ -406,8 +406,8 @@ function contentTaskToggleItemBookmark(tokenStore as Object, authService as Obje
     return result
 end function
 
-function contentTaskLoadBrowseOptions(tokenStore as Object, authService as Object, browseService as Object, typeService as Object) as Object
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to load Browse filters.")
+function contentTaskLoadBrowseOptions(tokenStoreService as Object, authService as Object, browseService as Object, typeService as Object) as Object
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load Browse filters.")
     if tokenResult.ok <> true
         tokenResult.command = "loadBrowseOptions"
         return tokenResult
@@ -419,14 +419,14 @@ function contentTaskLoadBrowseOptions(tokenStore as Object, authService as Objec
     return result
 end function
 
-function contentTaskLoadBrowseItems(tokenStore as Object, authService as Object, browseService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadBrowseItems(tokenStoreService as Object, authService as Object, browseService as Object, typeService as Object, request as Dynamic) as Object
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
     if page < 1 then page = 1
     if perpage < 1 then perpage = 20
     if perpage > 50 then perpage = 50
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to browse.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to browse.")
     if tokenResult.ok <> true
         tokenResult.command = "loadBrowseItems"
         tokenResult.page = page
@@ -435,16 +435,16 @@ function contentTaskLoadBrowseItems(tokenStore as Object, authService as Object,
     end if
 
     typeMap = contentTaskTypeMap(typeService, tokenResult.accessToken)
-    browseRequest = contentTaskBrowseRequest(request, page, perpage)
-    result = browseService.listItems(tokenResult.accessToken, browseRequest, typeMap)
+    browseRequestParams = contentTaskBrowseRequest(request, page, perpage)
+    result = browseService.listItems(tokenResult.accessToken, browseRequestParams, typeMap)
     result.command = "loadBrowseItems"
     result.page = page
     result.perpage = perpage
-    result.contentType = browseRequest.contentType
-    result.genreId = browseRequest.genreId
-    result.countryId = browseRequest.countryId
-    result.yearRange = browseRequest.yearRange
-    result.finished = browseRequest.finished
+    result.contentType = browseRequestParams.contentType
+    result.genreId = browseRequestParams.genreId
+    result.countryId = browseRequestParams.countryId
+    result.yearRange = browseRequestParams.yearRange
+    result.finished = browseRequestParams.finished
     return result
 end function
 
@@ -460,8 +460,8 @@ function contentTaskBrowseRequest(request as Dynamic, page as Integer, perpage a
     }
 end function
 
-function contentTaskAccessToken(tokenStore as Object, authService as Object, message as String) as Object
-    tokenResult = contentTaskUsableTokens(tokenStore, authService)
+function contentTaskAccessToken(tokenStoreService as Object, authService as Object, message as String) as Object
+    tokenResult = contentTaskUsableTokens(tokenStoreService, authService)
 
     if tokenResult.ok <> true
         if tokenResult.error = "auth_required"
@@ -485,7 +485,7 @@ function contentTaskTypeMap(typeService as Object, accessToken as String) as Obj
     return typeService.typeMap(accessToken)
 end function
 
-function contentTaskSavePlaybackProgress(tokenStore as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
+function contentTaskSavePlaybackProgress(tokenStoreService as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
     itemId = contentTaskIntegerField(request, "itemId", 0)
     seasonNumber = contentTaskIntegerField(request, "seasonNumber", 0)
     videoNumber = contentTaskIntegerField(request, "videoNumber", 0)
@@ -495,7 +495,7 @@ function contentTaskSavePlaybackProgress(tokenStore as Object, authService as Ob
         return { command: "savePlaybackProgress", ok: false, itemId: itemId, seasonNumber: seasonNumber, videoNumber: videoNumber, timeSeconds: timeSeconds, error: "invalid_media", message: "Unable to save playback progress.", status: 0 }
     end if
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to save playback progress.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to save playback progress.")
     if tokenResult.ok <> true
         tokenResult.command = "savePlaybackProgress"
         return tokenResult
@@ -510,7 +510,7 @@ function contentTaskSavePlaybackProgress(tokenStore as Object, authService as Ob
     return result
 end function
 
-function contentTaskMarkPlaybackWatched(tokenStore as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
+function contentTaskMarkPlaybackWatched(tokenStoreService as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
     itemId = contentTaskIntegerField(request, "itemId", 0)
     seasonNumber = contentTaskIntegerField(request, "seasonNumber", 0)
     videoNumber = contentTaskIntegerField(request, "videoNumber", 0)
@@ -528,7 +528,7 @@ function contentTaskMarkPlaybackWatched(tokenStore as Object, authService as Obj
         return { command: "markPlaybackWatched", ok: false, itemId: itemId, seasonNumber: seasonNumber, videoNumber: videoNumber, error: "unknown_watched_state", message: "Unable to confirm whether this video is already watched.", skipped: true, status: 0 }
     end if
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to mark playback watched.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to mark playback watched.")
     if tokenResult.ok <> true
         tokenResult.command = "markPlaybackWatched"
         return tokenResult
@@ -548,7 +548,7 @@ function contentTaskMarkPlaybackWatched(tokenStore as Object, authService as Obj
     return result
 end function
 
-function contentTaskToggleEpisodeWatched(tokenStore as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
+function contentTaskToggleEpisodeWatched(tokenStoreService as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
     itemId = contentTaskIntegerField(request, "itemId", 0)
     seasonNumber = contentTaskIntegerField(request, "seasonNumber", 0)
     videoNumber = contentTaskIntegerField(request, "videoNumber", 0)
@@ -561,7 +561,7 @@ function contentTaskToggleEpisodeWatched(tokenStore as Object, authService as Ob
         return { command: "toggleEpisodeWatched", ok: false, itemId: itemId, seasonNumber: seasonNumber, videoNumber: videoNumber, error: "unknown_watched_state", message: "Unable to update watched status.", status: 0 }
     end if
 
-    tokenResult = contentTaskAccessToken(tokenStore, authService, "Sign in again to update watched status.")
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to update watched status.")
     if tokenResult.ok <> true
         tokenResult.command = "toggleEpisodeWatched"
         return tokenResult
@@ -596,20 +596,20 @@ function contentTaskToggleEpisodeWatched(tokenStore as Object, authService as Ob
     return result
 end function
 
-function contentTaskUsableTokens(tokenStore as Object, authService as Object) as Object
-    tokens = tokenStore.load()
-    if tokenStore.hasUsableAccessToken(tokens) then return { ok: true, tokens: tokens }
+function contentTaskUsableTokens(tokenStoreService as Object, authService as Object) as Object
+    tokens = tokenStoreService.load()
+    if tokenStoreService.hasUsableAccessToken(tokens) then return { ok: true, tokens: tokens }
 
-    if tokenStore.hasRefreshToken(tokens)
+    if tokenStoreService.hasRefreshToken(tokens)
         refreshToken = contentTaskTokenString(tokens, "refreshtoken")
         result = authService.refreshToken(refreshToken)
         if result.ok = true
-            refreshedTokens = tokenStore.load()
-            if tokenStore.hasUsableAccessToken(refreshedTokens) then return { ok: true, tokens: refreshedTokens }
+            refreshedTokens = tokenStoreService.load()
+            if tokenStoreService.hasUsableAccessToken(refreshedTokens) then return { ok: true, tokens: refreshedTokens }
             return { ok: false, error: "auth_required", message: "Sign in again.", status: 0 }
         end if
         if contentTaskAuthFailure(result)
-            tokenStore.clear()
+            tokenStoreService.clear()
             return { ok: false, error: "auth_required", message: "Device authorization was removed. Sign in again.", status: result.status }
         end if
         return { ok: false, error: result.error, message: result.message, status: result.status }

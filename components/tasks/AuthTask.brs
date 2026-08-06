@@ -3,16 +3,16 @@ sub init()
 end sub
 
 sub runAuthTask()
-    tokenStore = TokenStore()
-    authService = KinoAuthService(KinoApiClient(KinoConfig()), tokenStore)
+    tokenStoreService = TokenStore()
+    authService = KinoAuthService(KinoApiClient(KinoConfig()), tokenStoreService)
     command = m.top.command
     request = m.top.request
     print "AuthTask: running command "; command
 
     if command = "routeFromStoredTokens"
-        m.top.response = authTaskRouteFromStoredTokens(tokenStore, authService)
+        m.top.response = authTaskRouteFromStoredTokens(tokenStoreService, authService)
     else if command = "clearTokens"
-        tokenStore.clear()
+        tokenStoreService.clear()
         m.top.response = { command: command, ok: true }
     else if command = "requestDeviceCode"
         result = authService.requestDeviceCode()
@@ -20,7 +20,7 @@ sub runAuthTask()
         m.top.response = result
     else if command = "pollDeviceToken"
         result = authService.pollDeviceToken(request.code)
-        if result.ok = true then authService.notifyDevice(result.tokens.accessToken)
+        if result.ok = true then authService.notifyDevice(result.tokens.accesstoken)
         result.command = command
         m.top.response = result
     else
@@ -28,26 +28,26 @@ sub runAuthTask()
     end if
 end sub
 
-function authTaskRouteFromStoredTokens(tokenStore as Object, authService as Object) as Object
-    tokens = tokenStore.load()
+function authTaskRouteFromStoredTokens(tokenStoreService as Object, authService as Object) as Object
+    tokens = tokenStoreService.load()
     print "AuthTask: loaded stored tokens? "; tokens <> invalid
     if tokens <> invalid
         print "AuthTask: token fields access="; tokens.DoesExist("accesstoken"); " accessExpiry="; tokens.DoesExist("accessexpiresat"); " refresh="; tokens.DoesExist("refreshtoken"); " refreshExpiry="; tokens.DoesExist("refreshexpiresat")
-        print "AuthTask: token keys="; tokenStore.keySummary(tokens)
+        print "AuthTask: token keys="; tokenStoreService.keySummary(tokens)
     end if
-    if tokenStore.hasUsableAccessToken(tokens)
+    if tokenStoreService.hasUsableAccessToken(tokens)
         print "AuthTask: using stored access token"
-        if authTaskNotifyAllowsHome(tokens.accesstoken, tokenStore, authService)
+        if authTaskNotifyAllowsHome(tokens.accesstoken, tokenStoreService, authService)
             return { command: "routeFromStoredTokens", ok: true, screen: "home" }
         end if
         return { command: "routeFromStoredTokens", ok: true, screen: "auth", error: "unauthorized", message: "Device authorization was removed. Sign in again." }
     end if
 
-    if tokenStore.hasRefreshToken(tokens)
+    if tokenStoreService.hasRefreshToken(tokens)
         print "AuthTask: refreshing stored token"
         result = authService.refreshToken(tokens.refreshtoken)
         if result.ok = true
-            if authTaskNotifyAllowsHome(result.tokens.accessToken, tokenStore, authService)
+            if authTaskNotifyAllowsHome(result.tokens.accesstoken, tokenStoreService, authService)
                 return { command: "routeFromStoredTokens", ok: true, screen: "home" }
             end if
             return { command: "routeFromStoredTokens", ok: true, screen: "auth", error: "unauthorized", message: "Device authorization was removed. Sign in again." }
@@ -55,18 +55,18 @@ function authTaskRouteFromStoredTokens(tokenStore as Object, authService as Obje
     end if
 
     print "AuthTask: no usable stored token; showing auth"
-    tokenStore.clear()
+    tokenStoreService.clear()
     return { command: "routeFromStoredTokens", ok: true, screen: "auth" }
 end function
 
-function authTaskNotifyAllowsHome(accessToken as String, tokenStore as Object, authService as Object) as Boolean
+function authTaskNotifyAllowsHome(accessToken as String, tokenStoreService as Object, authService as Object) as Boolean
     notifyResult = authService.notifyDevice(accessToken)
     if notifyResult.ok = true then return true
 
     print "AuthTask: device notify failed status="; notifyResult.status; " error="; notifyResult.error
     if notifyResult.status = 401 or notifyResult.error = "unauthorized"
         print "AuthTask: stored device authorization was removed; clearing tokens"
-        tokenStore.clear()
+        tokenStoreService.clear()
         return false
     end if
 

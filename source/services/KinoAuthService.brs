@@ -1,7 +1,7 @@
-function KinoAuthService(client as Object, tokenStore as Object) as Object
+function KinoAuthService(client as Object, tokenStoreService as Object) as Object
     return {
         client: client
-        tokenStore: tokenStore
+        tokenStore: tokenStoreService
         requestDeviceCode: kinoAuthRequestDeviceCode
         pollDeviceToken: kinoAuthPollDeviceToken
         refreshToken: kinoAuthRefreshToken
@@ -160,11 +160,11 @@ function kinoAuthTokensFromResponse(body as Object) as Object
     if body.DoesExist("expires_in") then accessExpiresIn = body.expires_in
 
     return {
-        accessToken: body.access_token
-        refreshToken: body.refresh_token
-        tokenType: body.token_type
-        accessExpiresAt: now + accessExpiresIn
-        refreshExpiresAt: now + (30 * 24 * 60 * 60)
+        accesstoken: body.access_token
+        refreshtoken: body.refresh_token
+        tokentype: body.token_type
+        accessexpiresat: now + accessExpiresIn
+        refreshexpiresat: now + (30 * 24 * 60 * 60)
     }
 end function
 

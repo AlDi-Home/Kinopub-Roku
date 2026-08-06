@@ -356,8 +356,8 @@ sub init()
     m.isLoadingAccount = false
     m.accountInfo = invalid
     m.accountErrorMessage = ""
-    buildInfo = BuildInfo()
-    m.accountVersionLabel.text = "Version: " + buildInfo.displayVersion
+    appBuildInfo = BuildInfo()
+    m.accountVersionLabel.text = "Version: " + appBuildInfo.displayVersion
 
     showSection("continue")
     setMenuExpanded(false)
