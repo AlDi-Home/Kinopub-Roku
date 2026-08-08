@@ -61,6 +61,7 @@ function currentMainScreen() as Dynamic
     if m.libraryScreen <> invalid and m.libraryScreen.visible = true then return m.libraryScreen
     if m.liveScreen <> invalid and m.liveScreen.visible = true then return m.liveScreen
     if m.searchScreen <> invalid and m.searchScreen.visible = true then return m.searchScreen
+    if m.settingsScreen <> invalid and m.settingsScreen.visible = true then return m.settingsScreen
     return invalid
 end function
 
@@ -176,6 +177,26 @@ sub showSearchScreen()
     m.searchScreen.callFunc("focusContent")
 end sub
 
+sub showSettingsScreen()
+    hideCurrentMainScreen()
+
+    if m.settingsScreen = invalid
+        screen = CreateObject("roSGNode", "SettingsScreen")
+        screen.id = "settingsScreen"
+        screen.observeField("signOutRequested", "onSignOutRequested")
+        screen.observeField("authRequired", "onAuthRequired")
+        screen.observeField("exitRequested", "onExitRequested")
+        screen.observeField("openLegacyHomeSection", "onOpenLegacyHomeSection")
+        screen.observeField("openTabScreen", "onOpenTabScreen")
+        screen.observeField("openContinueScreen", "onOpenContinueScreenFromHome")
+        m.settingsScreen = screen
+        m.screenHost.appendChild(screen)
+    end if
+    m.settingsScreen.visible = true
+    m.settingsScreen.setFocus(true)
+    m.settingsScreen.callFunc("focusContent")
+end sub
+
 sub onOpenTabScreen(event as Object)
     tabId = event.getData()
     if tabId = "movies" then
@@ -188,6 +209,8 @@ sub onOpenTabScreen(event as Object)
         showLiveScreen()
     else if tabId = "search" then
         showSearchScreen()
+    else if tabId = "settings" then
+        showSettingsScreen()
     end if
 end sub
 
@@ -261,7 +284,7 @@ sub showVideoDetailScreen(selection as Object)
     m.hiddenMainScreen = currentMainScreen()
     if m.hiddenMainScreen <> invalid
         m.hiddenMainScreen.visible = false
-    else if m.homeScreen = invalid and m.continueScreen = invalid and m.moviesScreen = invalid and m.seriesScreen = invalid and m.libraryScreen = invalid and m.liveScreen = invalid and m.searchScreen = invalid
+    else if m.homeScreen = invalid and m.continueScreen = invalid and m.moviesScreen = invalid and m.seriesScreen = invalid and m.libraryScreen = invalid and m.liveScreen = invalid and m.searchScreen = invalid and m.settingsScreen = invalid
         clearScreenHost()
     end if
     detailScreen = CreateObject("roSGNode", "VideoDetailScreen")
@@ -377,6 +400,9 @@ sub closePlayerScreen()
     else if m.searchScreen <> invalid
         m.searchScreen.visible = true
         m.searchScreen.setFocus(true)
+    else if m.settingsScreen <> invalid
+        m.settingsScreen.visible = true
+        m.settingsScreen.setFocus(true)
     end if
 end sub
 
@@ -415,6 +441,9 @@ sub restoreHomeScreen()
     else if m.searchScreen <> invalid
         m.searchScreen.visible = true
         m.searchScreen.setFocus(true)
+    else if m.settingsScreen <> invalid
+        m.settingsScreen.visible = true
+        m.settingsScreen.setFocus(true)
     else
         showContinueScreen()
     end if
@@ -440,6 +469,7 @@ sub clearScreenHost()
     m.libraryScreen = invalid
     m.liveScreen = invalid
     m.searchScreen = invalid
+    m.settingsScreen = invalid
     m.hiddenMainScreen = invalid
     m.hiddenForDevFonts = invalid
     m.detailScreen = invalid

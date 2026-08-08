@@ -506,14 +506,7 @@ sub onNavTabActivated(event as Object)
     ' are valid instead of stuck on "nav" with real focus back on m.top
     ' (which onKeyEvent has no "nav" branch for, leaving keys dead).
     onNavFocusExitDown()
-    ' TEMPORARY: settings tab opens the dev fonts page instead of legacy
-    ' Account while we're picking a font. Remove this branch (and
-    ' DevFontsScreen.xml/.brs) once that's decided.
-    if tabId = "settings"
-        m.top.openDevFonts = true
-        return
-    end if
-    if tabId = "movies" or tabId = "series" or tabId = "library" or tabId = "tv" or tabId = "search"
+    if tabId = "movies" or tabId = "series" or tabId = "library" or tabId = "tv" or tabId = "search" or tabId = "settings"
         m.top.openTabScreen = tabId
         return
     end if
@@ -521,7 +514,6 @@ sub onNavTabActivated(event as Object)
 end sub
 
 function continueScreenLegacySectionForTab(tabId as String) as String
-    if tabId = "settings" then return "account"
     return "home"
 end function
 

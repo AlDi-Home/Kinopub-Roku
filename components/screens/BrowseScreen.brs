@@ -785,11 +785,7 @@ sub onNavTabActivated(event as Object)
         m.top.openContinueScreen = true
         return
     end if
-    if tabId = "settings"
-        m.top.openDevFonts = true
-        return
-    end if
-    if tabId = "movies" or tabId = "series" or tabId = "library" or tabId = "tv" or tabId = "search"
+    if tabId = "movies" or tabId = "series" or tabId = "library" or tabId = "tv" or tabId = "search" or tabId = "settings"
         m.top.openTabScreen = tabId
         return
     end if

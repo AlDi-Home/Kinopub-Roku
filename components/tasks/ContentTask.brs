@@ -8,6 +8,7 @@ sub runContentTask()
     authService = KinoAuthService(client, tokenStoreService)
     bookmarkService = KinoBookmarkService(client)
     browseService = KinoBrowseService(client)
+    deviceService = KinoDeviceService(client)
     typeService = KinoContentTypeService(client)
     historyService = KinoHistoryService(client)
     homeService = KinoHomeService(client)
@@ -40,6 +41,10 @@ sub runContentTask()
         m.top.response = contentTaskSearchItems(tokenStoreService, authService, searchService, typeService, request)
     else if command = "loadUserInfo"
         m.top.response = contentTaskLoadUserInfo(tokenStoreService, authService, userService)
+    else if command = "loadDeviceSettings"
+        m.top.response = contentTaskLoadDeviceSettings(tokenStoreService, authService, deviceService)
+    else if command = "updateDeviceSetting"
+        m.top.response = contentTaskUpdateDeviceSetting(tokenStoreService, authService, deviceService, request)
     else if command = "loadBookmarkFolders"
         m.top.response = contentTaskLoadBookmarkFolders(tokenStoreService, authService, bookmarkService)
     else if command = "loadBookmarkFolderItems"
@@ -337,6 +342,49 @@ function contentTaskLoadUserInfo(tokenStoreService as Object, authService as Obj
 
     result = userService.info(tokenResult.accessToken)
     result.command = "loadUserInfo"
+    return result
+end function
+
+function contentTaskLoadDeviceSettings(tokenStoreService as Object, authService as Object, deviceService as Object) as Object
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load device settings.")
+    if tokenResult.ok <> true
+        tokenResult.command = "loadDeviceSettings"
+        return tokenResult
+    end if
+
+    deviceResult = deviceService.currentDevice(tokenResult.accessToken)
+    if deviceResult.ok <> true
+        deviceResult.command = "loadDeviceSettings"
+        return deviceResult
+    end if
+
+    settingsResult = deviceService.loadSettings(tokenResult.accessToken, deviceResult.id)
+    settingsResult.command = "loadDeviceSettings"
+    settingsResult.deviceId = deviceResult.id
+    return settingsResult
+end function
+
+function contentTaskUpdateDeviceSetting(tokenStoreService as Object, authService as Object, deviceService as Object, request as Dynamic) as Object
+    deviceId = contentTaskIntegerField(request, "deviceId", 0)
+    key = contentTaskStringField(request, "key", "")
+    value = contentTaskStringField(request, "value", "")
+
+    if deviceId <= 0 or key = ""
+        return { command: "updateDeviceSetting", ok: false, deviceId: deviceId, key: key, error: "invalid_request", message: "Unable to save this setting.", status: 0 }
+    end if
+
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to change device settings.")
+    if tokenResult.ok <> true
+        tokenResult.command = "updateDeviceSetting"
+        tokenResult.deviceId = deviceId
+        tokenResult.key = key
+        return tokenResult
+    end if
+
+    result = deviceService.updateSetting(tokenResult.accessToken, deviceId, key, value)
+    result.command = "updateDeviceSetting"
+    result.deviceId = deviceId
+    result.key = key
     return result
 end function
 

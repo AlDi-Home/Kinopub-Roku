@@ -10,6 +10,7 @@ required_files=(
   source/services/KinoBookmarkService.brs
   source/services/KinoBrowseService.brs
   source/services/KinoContentTypeService.brs
+  source/services/KinoDeviceService.brs
   source/services/KinoHistoryService.brs
   source/services/KinoHomeService.brs
   source/services/KinoItemService.brs
@@ -39,6 +40,8 @@ required_files=(
   components/screens/LiveScreen.brs
   components/screens/SearchScreen.xml
   components/screens/SearchScreen.brs
+  components/screens/SettingsScreen.xml
+  components/screens/SettingsScreen.brs
   components/screens/DevFontsScreen.xml
   components/screens/DevFontsScreen.brs
   components/nav/PillNavBar.xml

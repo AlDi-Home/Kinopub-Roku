@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.4.0 - 2026-08-08
+
+### Added
+- Settings screen (the gear pill-nav tab), replacing the temporary dev-fonts placeholder:
+  - Account summary: display name, username, subscription status/days-left/end date, registered date, app version.
+  - Device settings (`KinoDeviceService.brs`, new `loadDeviceSettings`/`updateDeviceSetting` task commands, per KinoAPI's `/v1/device/{id}/settings`): 4K support toggle, server selection, and streaming-type selection, saved immediately and resynced from the server if a save fails.
+  - Sign out, reachable for the first time since the light-theme redesign — no screen exposed it until now.
+
 ## 0.3.32 - 2026-08-08
 
 Light-theme redesign: replaces the dark, left-rail `HomeScreen` navigation with a light theme and a top pill-based navigation bar, splitting each section into its own dedicated screen. The legacy `HomeScreen` remains in the codebase (used as a functional reference during the port) but is no longer reachable from the UI.

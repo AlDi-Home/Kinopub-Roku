@@ -12,6 +12,7 @@
   <script type="text/brightscript" uri="pkg:/source/services/KinoBookmarkService.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/KinoBrowseService.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/KinoContentTypeService.brs" />
+  <script type="text/brightscript" uri="pkg:/source/services/KinoDeviceService.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/KinoHistoryService.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/KinoHomeService.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/KinoItemService.brs" />

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="SettingsScreen" extends="Group">
+    <interface>
+        <function name="focusContent" />
+        <field id="signOutRequested" type="boolean" alwaysNotify="true" />
+        <field id="authRequired" type="boolean" alwaysNotify="true" />
+        <field id="exitRequested" type="boolean" alwaysNotify="true" />
+        <field id="openLegacyHomeSection" type="string" alwaysNotify="true" />
+        <field id="openContinueScreen" type="boolean" alwaysNotify="true" />
+        <field id="openTabScreen" type="string" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Rectangle id="background" width="1280" height="720" color="#EEF5F8" />
+
+        <PillNavBar id="pillNav" translation="[30,14]" />
+
+        <Group id="loadingGroup" translation="[30,90]">
+            <Label id="loadingLabel" text="Загрузка..." width="700" height="60" color="#5B6B79" />
+        </Group>
+
+        <Group id="errorGroup" translation="[30,90]" visible="false">
+            <Label id="errorLabel" text="Не удалось загрузить настройки" width="700" height="60" color="#5B6B79" />
+            <Rectangle id="errorRetryFocus" translation="[0,50]" width="196" height="44" color="#D9E9F2" visible="false" />
+            <Label id="errorRetryLabel" text="Нажмите OK, чтобы повторить" translation="[8,64]" width="500" height="30" color="#111827" />
+        </Group>
+
+        <Group id="contentGroup" translation="[30,90]" visible="false">
+            <Label id="accountNameLabel" text="" translation="[0,0]" width="600" height="36" color="#111827" />
+            <Label id="accountUsernameLabel" text="" translation="[0,42]" width="600" height="22" color="#5B6B79" />
+            <Label id="accountStatusLabel" text="" translation="[0,68]" width="600" height="22" color="#5B6B79" />
+            <Label id="accountDaysLabel" text="" translation="[0,94]" width="600" height="22" color="#5B6B79" />
+            <Label id="accountEndLabel" text="" translation="[0,120]" width="600" height="22" color="#5B6B79" />
+            <Label id="accountRegisteredLabel" text="" translation="[0,146]" width="600" height="22" color="#5B6B79" />
+            <Label id="accountVersionLabel" text="" translation="[0,172]" width="600" height="22" color="#5B6B79" />
+
+            <Label id="deviceSectionLabel" text="Настройки устройства" translation="[0,226]" width="600" height="26" color="#111827" />
+            <Group id="settingsRowsHost" translation="[0,260]" />
+            <Label id="settingsMessageLabel" text="" translation="[0,500]" width="600" height="24" color="#E11D2E" />
+        </Group>
+
+        <ExitConfirmDialog id="exitDialog" visible="false" />
+        <ListPickerDialog id="filterPickerDialog" visible="false" />
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+    <script type="text/brightscript" uri="pkg:/source/config/BuildInfo.brs" />
+    <script type="text/brightscript" uri="pkg:/components/screens/SettingsScreen.brs" />
+</component>
