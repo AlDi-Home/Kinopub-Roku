@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ExitConfirmDialog" extends="Group">
+    <interface>
+        <function name="toggleSelection" />
+        <function name="confirmSelection" />
+        <field id="dialogResult" type="string" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Rectangle width="1280" height="720" color="#000000" opacity="0.55" />
+        <Group translation="[410,258]">
+            <Rectangle width="460" height="204" color="#FFFFFF" />
+            <Label text="Выйти из KinoPub?" translation="[32,28]" width="396" height="30" color="#111827" font="font:LargeBoldSystemFont" />
+            <Label text="Вы уверены, что хотите выйти?" translation="[32,72]" width="396" height="28" color="#5B6B79" />
+
+            <Group id="yesButton" translation="[92,134]">
+                <Rectangle id="yesBg" width="120" height="48" />
+                <Label id="yesLabel" text="Да" translation="[0,14]" width="120" height="24" horizAlign="center" />
+            </Group>
+
+            <Group id="noButton" translation="[248,134]">
+                <Rectangle id="noBg" width="120" height="48" />
+                <Label id="noLabel" text="Нет" translation="[0,14]" width="120" height="24" horizAlign="center" />
+            </Group>
+        </Group>
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+    <script type="text/brightscript" uri="pkg:/components/dialogs/ExitConfirmDialog.brs" />
+</component>

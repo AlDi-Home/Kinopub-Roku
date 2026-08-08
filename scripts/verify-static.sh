@@ -31,6 +31,24 @@ required_files=(
   components/screens/PlayerScreen.brs
   components/screens/VideoDetailScreen.xml
   components/screens/VideoDetailScreen.brs
+  components/screens/ContinueScreen.xml
+  components/screens/ContinueScreen.brs
+  components/screens/BrowseScreen.xml
+  components/screens/BrowseScreen.brs
+  components/screens/LiveScreen.xml
+  components/screens/LiveScreen.brs
+  components/screens/SearchScreen.xml
+  components/screens/SearchScreen.brs
+  components/screens/DevFontsScreen.xml
+  components/screens/DevFontsScreen.brs
+  components/nav/PillNavBar.xml
+  components/nav/PillNavBar.brs
+  components/dialogs/ExitConfirmDialog.xml
+  components/dialogs/ExitConfirmDialog.brs
+  components/dialogs/ListPickerDialog.xml
+  components/dialogs/ListPickerDialog.brs
+  components/cards/PosterCard.brs
+  components/theme/UiTheme.brs
   components/tasks/AuthTask.xml
   components/tasks/AuthTask.brs
   components/tasks/ContentTask.xml
@@ -38,6 +56,13 @@ required_files=(
   images/channel-icon_hd.png
   images/channel-icon_fhd.png
   images/kino-icon-source.png
+  images/kinopub.svg
+  images/ui/tile-shadow.png
+  images/ui/icon-kinopoisk.png
+  images/ui/icon-kinopub.png
+  images/ui/icon-search.png
+  images/ui/icon-settings.png
+  components/fonts/RokuText-Regular.otf
   config/kinoapi.example.json
   scripts/generate-config.sh
   scripts/generate-build-info.sh
@@ -48,6 +73,8 @@ required_files=(
 for file in "${required_files[@]}"; do
   [[ -f "$file" ]] || { echo "Missing $file" >&2; exit 1; }
 done
+
+grep -q 'pkg:/components/fonts/RokuText-Regular.otf' components/screens/DevFontsScreen.xml
 
 grep -q "replace-with-client-id" config/kinoapi.example.json
 grep -q "mm_icon_focus_hd=pkg:/images/channel-icon_hd.png" manifest
@@ -152,6 +179,12 @@ grep -q "loadBrowseOptions" components/tasks/ContentTask.brs
 grep -q "loadBrowseItems" components/tasks/ContentTask.brs
 grep -q "contentTaskLoadBrowseOptions" components/tasks/ContentTask.brs
 grep -q "contentTaskLoadBrowseItems" components/tasks/ContentTask.brs
+grep -q "loadShortcutItems" components/tasks/ContentTask.brs
+grep -q "contentTaskLoadShortcutItems" components/tasks/ContentTask.brs
+grep -q "listShortcut: kinoBrowseListShortcut" source/services/KinoBrowseService.brs
+grep -q '"/v1/items/fresh"' source/services/KinoBrowseService.brs
+grep -q '"/v1/items/hot"' source/services/KinoBrowseService.brs
+grep -q '"/v1/items/popular"' source/services/KinoBrowseService.brs
 grep -q "typeMap = contentTaskTypeMap(typeService, tokenResult.accessToken)" components/tasks/ContentTask.brs
 grep -q "typeTitle" source/services/KinoBrowseService.brs
 grep -q "typeBadge" source/services/KinoBrowseService.brs
@@ -270,7 +303,7 @@ grep -q "key.column = columnIndex" components/screens/HomeScreen.brs
 grep -q "targetRow = current.row + direction" components/screens/HomeScreen.brs
 grep -q 'm.selectedSection = "continue"' components/screens/HomeScreen.brs
 grep -q 'm.menuExpanded = false' components/screens/HomeScreen.brs
-grep -q 'showSection("continue")' components/screens/HomeScreen.brs
+grep -q 'showSection(initialSection)' components/screens/HomeScreen.brs
 grep -q 'setMenuExpanded(true)' components/screens/HomeScreen.brs
 grep -q 'setMenuExpanded(false)' components/screens/HomeScreen.brs
 grep -q 'Continue Watching' components/screens/HomeScreen.xml
@@ -387,7 +420,8 @@ grep -q "videoSelected" components/screens/HomeScreen.xml
 grep -q "videoSelected" components/screens/HomeScreen.brs
 grep -q "showVideoDetailScreen" components/AppScene.brs
 grep -q "m.homeScreen = homeScreen" components/AppScene.brs
-grep -q "m.homeScreen.visible = false" components/AppScene.brs
+grep -q "sub hideCurrentMainScreen()" components/AppScene.brs
+grep -q "function currentMainScreen() as Dynamic" components/AppScene.brs
 grep -q "restoreHomeScreen()" components/AppScene.brs
 grep -q "sub restoreHomeScreen()" components/AppScene.brs
 grep -q "m.homeScreen.visible = true" components/AppScene.brs

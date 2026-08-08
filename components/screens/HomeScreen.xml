@@ -6,6 +6,8 @@
     <field id="exitRequested" type="boolean" alwaysNotify="true" />
     <field id="videoSelected" type="assocarray" alwaysNotify="true" />
     <field id="livePlaybackSelected" type="assocarray" alwaysNotify="true" />
+    <field id="initialSection" type="string" value="home" />
+    <field id="openContinueScreen" type="boolean" alwaysNotify="true" />
   </interface>
   <children>
     <Rectangle width="1280" height="720" color="#090B0F" />

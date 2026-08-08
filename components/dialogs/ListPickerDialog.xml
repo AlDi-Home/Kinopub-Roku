@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ListPickerDialog" extends="Group">
+    <interface>
+        <function name="configure" />
+        <function name="moveSelection" />
+        <function name="confirmSelection" />
+        <field id="dialogResult" type="assocarray" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Rectangle width="1280" height="720" color="#000000" opacity="0.55" />
+        <Group translation="[430,190]">
+            <Rectangle id="panelBg" width="420" height="312" color="#FFFFFF" />
+            <Label id="titleLabel" text="" translation="[20,16]" width="380" height="30" color="#111827" font="font:LargeBoldSystemFont" />
+            <Group id="cursor" translation="[20,58]" visible="false">
+                <Rectangle width="380" height="42" color="#BFDBFE" opacity="0.9" />
+            </Group>
+            <Group id="rowsHost" translation="[20,58]" />
+            <Label id="statusLabel" text="" translation="[20,270]" width="380" height="24" color="#5B6B79" />
+        </Group>
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+    <script type="text/brightscript" uri="pkg:/components/dialogs/ListPickerDialog.brs" />
+</component>

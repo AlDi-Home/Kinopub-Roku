@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="SearchScreen" extends="Group">
+    <interface>
+        <function name="focusContent" />
+        <field id="signOutRequested" type="boolean" alwaysNotify="true" />
+        <field id="authRequired" type="boolean" alwaysNotify="true" />
+        <field id="exitRequested" type="boolean" alwaysNotify="true" />
+        <field id="videoSelected" type="assocarray" alwaysNotify="true" />
+        <field id="openLegacyHomeSection" type="string" alwaysNotify="true" />
+        <field id="openContinueScreen" type="boolean" alwaysNotify="true" />
+        <field id="openTabScreen" type="string" alwaysNotify="true" />
+        <field id="openDevFonts" type="boolean" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Rectangle id="background" width="1280" height="720" color="#EEF5F8" />
+
+        <PillNavBar id="pillNav" translation="[30,14]" />
+
+        <!-- Merged search bar: box (OK opens keyboard) + Тип/Поле/Сорт. chips -->
+        <Group id="searchBarHost" translation="[30,70]">
+            <Group id="searchBoxButton" translation="[0,0]">
+                <Rectangle id="searchBoxBg" width="420" height="44" color="#F3F7F9" />
+                <Label id="searchBoxLabel" text="Поиск..." translation="[16,12]" width="388" height="20" color="#5B6B79" />
+            </Group>
+            <Group id="filterTypeButton" translation="[432,0]">
+                <Rectangle id="filterTypeBg" width="188" height="44" color="#F3F7F9" />
+                <Label id="filterTypeLabel" text="Тип: Все" translation="[12,12]" width="164" height="20" color="#111827" />
+            </Group>
+            <Group id="filterFieldButton" translation="[632,0]">
+                <Rectangle id="filterFieldBg" width="196" height="44" color="#F3F7F9" />
+                <Label id="filterFieldLabel" text="Поле: Название" translation="[12,12]" width="172" height="20" color="#111827" />
+            </Group>
+            <Group id="filterSortButton" translation="[840,0]">
+                <Rectangle id="filterSortBg" width="168" height="44" color="#F3F7F9" />
+                <Label id="filterSortLabel" text="Сорт.: Новые" translation="[12,12]" width="144" height="20" color="#111827" />
+            </Group>
+        </Group>
+
+        <Label id="searchMessageLabel" text="" translation="[30,122]" width="900" height="24" color="#E11D2E" />
+
+        <!-- Mutually-exclusive content-area groups, all anchored at [30,160] -->
+        <Group id="keyboardHost" translation="[30,160]" visible="false">
+            <Group id="keyboardKeysHost" />
+        </Group>
+
+        <Group id="recentSearchesHost" translation="[30,160]" visible="false" />
+
+        <Group id="emptyPlaceholderGroup" translation="[30,160]" visible="false">
+            <Label id="emptyPlaceholderLabel" text="Нажмите OK на строке поиска, чтобы начать" width="700" height="30" color="#5B6B79" />
+        </Group>
+
+        <Group id="gridHost" translation="[30,160]" visible="false">
+            <Group id="gridContent" />
+        </Group>
+
+        <Group id="loadingGroup" translation="[30,160]" visible="false">
+            <Label id="loadingLabel" text="Загрузка..." width="700" height="60" color="#5B6B79" />
+        </Group>
+
+        <Group id="noResultsGroup" translation="[30,160]" visible="false">
+            <Label id="noResultsLabel" text="Нет результатов" width="900" height="40" color="#5B6B79" />
+        </Group>
+
+        <Group id="errorGroup" translation="[30,160]" visible="false">
+            <Label id="errorLabel" text="Не удалось выполнить поиск" width="700" height="60" color="#5B6B79" />
+            <Rectangle id="errorRetryFocus" translation="[0,50]" width="196" height="44" color="#D9E9F2" visible="false" />
+            <Label id="errorRetryLabel" text="Нажмите OK, чтобы повторить" translation="[8,64]" width="500" height="30" color="#111827" />
+        </Group>
+
+        <ExitConfirmDialog id="exitDialog" visible="false" />
+        <ListPickerDialog id="filterPickerDialog" visible="false" />
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+    <script type="text/brightscript" uri="pkg:/components/cards/PosterCard.brs" />
+    <script type="text/brightscript" uri="pkg:/source/services/SearchHistoryStore.brs" />
+    <script type="text/brightscript" uri="pkg:/components/screens/SearchScreen.brs" />
+</component>

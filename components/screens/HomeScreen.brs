@@ -359,7 +359,9 @@ sub init()
     appBuildInfo = BuildInfo()
     m.accountVersionLabel.text = "Version: " + appBuildInfo.displayVersion
 
-    showSection("continue")
+    initialSection = m.top.initialSection
+    if initialSection = invalid or initialSection = "" then initialSection = "home"
+    showSection(initialSection)
     setMenuExpanded(false)
     probeLiveTv()
     m.top.setFocus(true)
@@ -4100,6 +4102,10 @@ sub activateMenuItem()
     entries = menuEntries()
     if m.menuIndex < 0 or m.menuIndex >= entries.Count() then return
     section = entries[m.menuIndex].section
+    if section = "continue"
+        m.top.openContinueScreen = true
+        return
+    end if
     if section = "signOut"
         m.top.signOutRequested = true
     else

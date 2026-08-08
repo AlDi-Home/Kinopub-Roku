@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="BrowseScreen" extends="Group">
+    <interface>
+        <function name="configure" />
+        <function name="focusContent" />
+        <field id="signOutRequested" type="boolean" alwaysNotify="true" />
+        <field id="authRequired" type="boolean" alwaysNotify="true" />
+        <field id="exitRequested" type="boolean" alwaysNotify="true" />
+        <field id="videoSelected" type="assocarray" alwaysNotify="true" />
+        <field id="openLegacyHomeSection" type="string" alwaysNotify="true" />
+        <field id="openContinueScreen" type="boolean" alwaysNotify="true" />
+        <field id="openTabScreen" type="string" alwaysNotify="true" />
+        <field id="openDevFonts" type="boolean" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Rectangle id="background" width="1280" height="720" color="#EEF5F8" />
+
+        <PillNavBar id="pillNav" translation="[30,14]" />
+
+        <Group id="leftListHost" translation="[30,90]">
+            <Group id="leftListContent" />
+        </Group>
+
+        <Group id="filterBarHost" translation="[30,70]" visible="false">
+            <Group id="filterTypeButton" translation="[0,0]">
+                <Rectangle id="filterTypeBg" width="188" height="44" color="#F3F7F9" />
+                <Label id="filterTypeLabel" text="Тип: Все" translation="[12,12]" width="164" height="20" color="#111827" />
+            </Group>
+            <Group id="filterGenreButton" translation="[200,0]">
+                <Rectangle id="filterGenreBg" width="196" height="44" color="#F3F7F9" />
+                <Label id="filterGenreLabel" text="Жанр: Любой" translation="[12,12]" width="172" height="20" color="#111827" />
+            </Group>
+            <Group id="filterCountryButton" translation="[408,0]">
+                <Rectangle id="filterCountryBg" width="208" height="44" color="#F3F7F9" />
+                <Label id="filterCountryLabel" text="Страна: Любая" translation="[12,12]" width="184" height="20" color="#111827" />
+            </Group>
+            <Group id="filterYearButton" translation="[628,0]">
+                <Rectangle id="filterYearBg" width="168" height="44" color="#F3F7F9" />
+                <Label id="filterYearLabel" text="Год: Все" translation="[12,12]" width="144" height="20" color="#111827" />
+            </Group>
+            <Group id="filterFinishedButton" translation="[808,0]">
+                <Rectangle id="filterFinishedBg" width="190" height="44" color="#F3F7F9" />
+                <Label id="filterFinishedLabel" text="Статус: Любой" translation="[12,12]" width="166" height="20" color="#111827" />
+            </Group>
+        </Group>
+
+        <Group id="gridHost" translation="[300,90]">
+            <Group id="gridContent" />
+        </Group>
+
+        <Group id="loadingGroup" translation="[300,90]" visible="false">
+            <Label id="loadingLabel" text="Loading..." width="700" height="60" color="#5B6B79" />
+        </Group>
+
+        <Group id="errorGroup" translation="[300,90]" visible="false">
+            <Label id="errorLabel" text="Unable to load" width="700" height="60" color="#5B6B79" />
+            <Rectangle id="errorRetryFocus" translation="[0,50]" width="196" height="44" color="#D9E9F2" visible="false" />
+            <Label id="errorRetryLabel" text="Press OK to retry" translation="[8,64]" width="500" height="30" color="#111827" />
+        </Group>
+
+        <ExitConfirmDialog id="exitDialog" visible="false" />
+        <ListPickerDialog id="filterPickerDialog" visible="false" />
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+    <script type="text/brightscript" uri="pkg:/components/cards/PosterCard.brs" />
+    <script type="text/brightscript" uri="pkg:/components/screens/BrowseScreen.brs" />
+</component>

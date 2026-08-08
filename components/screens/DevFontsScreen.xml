@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  TEMPORARY dev/diagnostic screen — not part of the redesign, meant to be
+  deleted once a font choice is made. Shows every Roku built-in "font:"
+  system-font identifier, plus the components/fonts/RokuText-Regular.otf
+  custom-font candidate, all rendered with real sample text — since we found
+  that setting a Label's font at runtime via BRS (CreateObject("Font") + uri=)
+  silently fails to render, while static XML "font=" attributes/nested
+  <Font> children work fine. This page uses ONLY static XML font
+  declarations so every row is reliable.
+-->
+<component name="DevFontsScreen" extends="Group">
+    <interface>
+        <field id="closeRequested" type="boolean" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Rectangle width="1280" height="720" color="#EEF5F8" />
+        <Label text="Dev: Built-in Fonts (press Back to close)" translation="[30,20]" width="900" height="30" color="#5B6B79" />
+
+        <Label text="font:SmallSystemFont" translation="[30,70]" width="360" height="30" color="#5B6B79" />
+        <Label text="Мои Сериалы 2026 — Aa" font="font:SmallSystemFont" translation="[400,70]" width="820" height="34" color="#111827" />
+
+        <Label text="font:MediumSystemFont" translation="[30,110]" width="360" height="34" color="#5B6B79" />
+        <Label text="Мои Сериалы 2026 — Aa" font="font:MediumSystemFont" translation="[400,110]" width="820" height="38" color="#111827" />
+
+        <Label text="font:LargeSystemFont" translation="[30,155]" width="360" height="40" color="#5B6B79" />
+        <Label text="Мои Сериалы 2026 — Aa" font="font:LargeSystemFont" translation="[400,155]" width="820" height="44" color="#111827" />
+
+        <Label text="font:SmallBoldSystemFont" translation="[30,210]" width="360" height="30" color="#5B6B79" />
+        <Label text="Мои Сериалы 2026 — Aa" font="font:SmallBoldSystemFont" translation="[400,210]" width="820" height="34" color="#111827" />
+
+        <Label text="font:MediumBoldSystemFont" translation="[30,250]" width="360" height="34" color="#5B6B79" />
+        <Label text="Мои Сериалы 2026 — Aa" font="font:MediumBoldSystemFont" translation="[400,250]" width="820" height="38" color="#111827" />
+
+        <Label text="font:LargeBoldSystemFont" translation="[30,295]" width="360" height="40" color="#5B6B79" />
+        <Label text="Мои Сериалы 2026 — Aa" font="font:LargeBoldSystemFont" translation="[400,295]" width="820" height="44" color="#111827" />
+
+        <Label text="font:ExtraLargeBoldSystemFont" translation="[30,345]" width="360" height="50" color="#5B6B79" />
+        <Label text="Мои Сериалы 2026 — Aa" font="font:ExtraLargeBoldSystemFont" translation="[400,345]" width="820" height="54" color="#111827" />
+
+        <Label text="Custom font candidate: components/fonts/RokuText-Regular.otf" translation="[30,410]" width="1200" height="30" color="#5B6B79" />
+
+        <Label text="size 18:" translation="[30,450]" width="120" height="30" color="#5B6B79" />
+        <Label text="Мои Сериалы — Aa 18" translation="[160,450]" width="1000" height="34" color="#111827">
+            <Font uri="pkg:/components/fonts/RokuText-Regular.otf" size="18" />
+        </Label>
+
+        <Label text="size 28:" translation="[30,490]" width="120" height="40" color="#5B6B79" />
+        <Label text="Мои Сериалы — Aa 28" translation="[160,490]" width="1000" height="44" color="#111827">
+            <Font uri="pkg:/components/fonts/RokuText-Regular.otf" size="28" />
+        </Label>
+
+        <Label text="size 40:" translation="[30,540]" width="120" height="52" color="#5B6B79" />
+        <Label text="Мои Сериалы — Aa 40" translation="[160,540]" width="1000" height="56" color="#111827">
+            <Font uri="pkg:/components/fonts/RokuText-Regular.otf" size="40" />
+        </Label>
+
+        <Label text="size 56:" translation="[30,605]" width="120" height="66" color="#5B6B79" />
+        <Label text="Мои Сериалы — Aa 56" translation="[160,605]" width="1000" height="70" color="#111827">
+            <Font uri="pkg:/components/fonts/RokuText-Regular.otf" size="56" />
+        </Label>
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/screens/DevFontsScreen.brs" />
+</component>

@@ -48,6 +48,8 @@ sub runContentTask()
         m.top.response = contentTaskLoadBrowseOptions(tokenStoreService, authService, browseService, typeService)
     else if command = "loadBrowseItems"
         m.top.response = contentTaskLoadBrowseItems(tokenStoreService, authService, browseService, typeService, request)
+    else if command = "loadShortcutItems"
+        m.top.response = contentTaskLoadShortcutItems(tokenStoreService, authService, browseService, typeService, request)
     else if command = "probeLiveTv" or command = "loadLiveTv"
         m.top.response = contentTaskLoadLiveTv(tokenStoreService, authService, tvService, command)
     else if command = "loadItemBookmarkFolders"
@@ -445,6 +447,34 @@ function contentTaskLoadBrowseItems(tokenStoreService as Object, authService as 
     result.countryId = browseRequestParams.countryId
     result.yearRange = browseRequestParams.yearRange
     result.finished = browseRequestParams.finished
+    return result
+end function
+
+function contentTaskLoadShortcutItems(tokenStoreService as Object, authService as Object, browseService as Object, typeService as Object, request as Dynamic) as Object
+    page = contentTaskIntegerField(request, "page", 1)
+    perpage = contentTaskIntegerField(request, "perpage", 20)
+    if page < 1 then page = 1
+    if perpage < 1 then perpage = 20
+    if perpage > 50 then perpage = 50
+
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to browse.")
+    if tokenResult.ok <> true
+        tokenResult.command = "loadShortcutItems"
+        tokenResult.page = page
+        tokenResult.perpage = perpage
+        return tokenResult
+    end if
+
+    typeMap = contentTaskTypeMap(typeService, tokenResult.accessToken)
+    shortcut = contentTaskStringField(request, "shortcut", "")
+    contentType = contentTaskStringField(request, "contentType", "")
+    shortcutRequestParams = { page: page, perpage: perpage, contentType: contentType }
+    result = browseService.listShortcut(tokenResult.accessToken, shortcut, shortcutRequestParams, typeMap)
+    result.command = "loadShortcutItems"
+    result.page = page
+    result.perpage = perpage
+    result.shortcut = shortcut
+    result.contentType = contentType
     return result
 end function
 

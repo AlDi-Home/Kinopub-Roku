@@ -51,12 +51,18 @@ Roku SceneGraph runs the main thread and task threads in isolation. Tasks (`comp
 ```
 LoadingScreen → AuthScreen (device-code login)
                          ↓ authCompleted
-             HomeScreen (tabs: home, search, browse, bookmarks, history, live TV)
+             ContinueScreen ("Мои" — Continue Watching / New Episodes)
+                         ↓ openTabScreen / openContinueScreen (via PillNavBar)
+             ContinueScreen | BrowseScreen (Фильмы/Сериалы/Библиотека) | LiveScreen (ТВ) | SearchScreen (Поиск)
                          ↓ videoSelected
              VideoDetailScreen (item detail, season/episode selection)
                          ↓ playbackRequested
              PlayerScreen (custom video player UI)
 ```
+
+Every main screen shares a top `PillNavBar` (`components/nav/`) for cross-tab navigation. Each is a **singleton**, created once by `AppScene` on first visit and kept alive for the app's lifetime (toggled via `.visible`, never destroyed except on sign-out). `BrowseScreen` is shared by three tabs via a `configure(contentType, navTabId)` interface function (not a field — see its header comment for why): `contentType=""` switches it into "Library" mode (a Тип/Жанр/Страна/Год/Статус filter bar over `/v1/items`) instead of the fixed-type "shortcut" mode Movies/Series use. `components/dialogs/` (`ExitConfirmDialog`, `ListPickerDialog`) provide shared overlays; per their header comments, dialogs never take real SceneGraph focus — the owning screen keeps focus and routes keys to the dialog explicitly while it's open. `components/theme/UiTheme.brs` and `components/cards/PosterCard.brs` provide the shared light-theme tokens and poster-tile builder used by every screen above.
+
+The legacy `HomeScreen` (`components/screens/HomeScreen.brs`/`.xml`, dark theme, left-rail tabs) still exists in the codebase but is no longer reachable from the UI — kept only as reference material while porting its remaining functionality (if any) to the screens above.
 
 Screens are created and destroyed by `AppScene`; the active screen holds focus. Player and detail screens are hidden (not destroyed) when layering on top, and restored on back.
 

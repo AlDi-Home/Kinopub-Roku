@@ -7,6 +7,8 @@ function KinoBrowseService(client as Object) as Object
         fetchOptionsTimeoutMs: 1500
         loadOptions: kinoBrowseLoadOptions
         listItems: kinoBrowseListItems
+        listShortcut: kinoBrowseListShortcut
+        shortcutEndpoint: kinoBrowseShortcutEndpoint
         optionList: kinoBrowseOptionList
         fetchOptionList: kinoBrowseFetchOptionList
         loadOptionCache: kinoBrowseLoadOptionCache
@@ -146,6 +148,37 @@ function kinoBrowseListItems(accessToken as String, request as Object, typeMap =
     response = m.client.get("/v1/items", queryParams, m.client.defaultTimeoutMs)
     if response.ok <> true then return m.failure(response)
     return m.normalizeItemsResponse(response.body, page, perpage, typeMap)
+end function
+
+' "Shortcut" video lists (fresh/hot/popular) are dedicated endpoints, not a
+' filter on /v1/items — see https://kinoapi.com/api_video.html#shortcut.
+function kinoBrowseListShortcut(accessToken as String, shortcut as String, request as Object, typeMap = invalid as Dynamic) as Object
+    page = m.integerField(request, "page", 1)
+    perpage = m.integerField(request, "perpage", 20)
+    if page < 1 then page = 1
+    if perpage < 1 then perpage = 20
+    if perpage > 50 then perpage = 50
+
+    endpoint = m.shortcutEndpoint(shortcut)
+    if endpoint = ""
+        pagination = { total: 0, current: page, perpage: perpage, total_items: 0 }
+        return { ok: false, items: [], pagination: pagination, error: "invalid_shortcut", message: "Unknown shortcut.", status: 0 }
+    end if
+
+    queryParams = { access_token: accessToken, page: page, perpage: perpage }
+    contentType = m.stringField(request, "contentType", "")
+    if contentType <> "" then queryParams.type = contentType
+
+    response = m.client.get(endpoint, queryParams, m.client.defaultTimeoutMs)
+    if response.ok <> true then return m.failure(response)
+    return m.normalizeItemsResponse(response.body, page, perpage, typeMap)
+end function
+
+function kinoBrowseShortcutEndpoint(shortcut as String) as String
+    if shortcut = "fresh" then return "/v1/items/fresh"
+    if shortcut = "hot" then return "/v1/items/hot"
+    if shortcut = "popular" then return "/v1/items/popular"
+    return ""
 end function
 
 function kinoBrowseQueryParams(accessToken as String, request as Object, page as Integer, perpage as Integer) as Object

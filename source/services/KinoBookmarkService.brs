@@ -154,6 +154,9 @@ function kinoBookmarkNormalizeItem(item as Dynamic, typeMap = invalid as Dynamic
         metadata: m.metadata(item)
         type: m.stringField(item, "type", "")
         year: m.integerField(item, "year", 0)
+        imdbRating: m.stringField(item, "imdb_rating", "")
+        kinopoiskRating: m.stringField(item, "kinopoisk_rating", "")
+        kinopubRating: m.stringField(item, "rating", "")
     }
 
     return m.enrichType(normalized, typeMap)

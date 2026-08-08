@@ -160,6 +160,9 @@ function kinoWatchingNormalizeSerialEntry(entry as Dynamic, typeMap = invalid as
         unwatchedCount: unwatchedCount
         progressSeconds: progressSeconds
         durationSeconds: durationSeconds
+        imdbRating: m.stringField(item, "imdb_rating", "")
+        kinopoiskRating: m.stringField(item, "kinopoisk_rating", "")
+        kinopubRating: m.stringField(item, "rating", "")
         selected: false
     }
 end function

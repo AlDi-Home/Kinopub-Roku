@@ -27,7 +27,7 @@ sub onRouteTaskResponse(event as Object)
     result = event.getData()
     print "AppScene: routeFromStoredTokens response "; FormatJson(result)
     if result <> invalid and result.screen = "home"
-        showHomeScreen()
+        showContinueScreen()
     else
         showAuthScreen()
     end if
@@ -53,17 +53,202 @@ sub showLoadingScreen()
     m.screenHost.appendChild(loadingScreen)
 end sub
 
-sub showHomeScreen()
-    clearScreenHost()
-    homeScreen = CreateObject("roSGNode", "HomeScreen")
-    homeScreen.observeField("signOutRequested", "onSignOutRequested")
-    homeScreen.observeField("authRequired", "onAuthRequired")
-    homeScreen.observeField("exitRequested", "onExitRequested")
-    homeScreen.observeField("videoSelected", "onVideoSelected")
-    homeScreen.observeField("livePlaybackSelected", "onLivePlaybackSelected")
-    m.homeScreen = homeScreen
-    m.screenHost.appendChild(homeScreen)
-    homeScreen.setFocus(true)
+function currentMainScreen() as Dynamic
+    if m.continueScreen <> invalid and m.continueScreen.visible = true then return m.continueScreen
+    if m.homeScreen <> invalid and m.homeScreen.visible = true then return m.homeScreen
+    if m.moviesScreen <> invalid and m.moviesScreen.visible = true then return m.moviesScreen
+    if m.seriesScreen <> invalid and m.seriesScreen.visible = true then return m.seriesScreen
+    if m.libraryScreen <> invalid and m.libraryScreen.visible = true then return m.libraryScreen
+    if m.liveScreen <> invalid and m.liveScreen.visible = true then return m.liveScreen
+    if m.searchScreen <> invalid and m.searchScreen.visible = true then return m.searchScreen
+    return invalid
+end function
+
+sub hideCurrentMainScreen()
+    screen = currentMainScreen()
+    if screen <> invalid then screen.visible = false
+end sub
+
+sub showContinueScreen()
+    hideCurrentMainScreen()
+
+    if m.continueScreen = invalid
+        continueScreen = CreateObject("roSGNode", "ContinueScreen")
+        continueScreen.id = "continueScreen"
+        continueScreen.observeField("signOutRequested", "onSignOutRequested")
+        continueScreen.observeField("authRequired", "onAuthRequired")
+        continueScreen.observeField("exitRequested", "onExitRequested")
+        continueScreen.observeField("videoSelected", "onVideoSelected")
+        continueScreen.observeField("openLegacyHomeSection", "onOpenLegacyHomeSection")
+        continueScreen.observeField("openTabScreen", "onOpenTabScreen")
+        continueScreen.observeField("openDevFonts", "onOpenDevFonts")
+        m.continueScreen = continueScreen
+        m.screenHost.appendChild(continueScreen)
+    end if
+    m.continueScreen.visible = true
+    m.continueScreen.setFocus(true)
+    m.continueScreen.callFunc("focusContent")
+end sub
+
+function ensureBrowseScreen(fieldName as String, contentType as String, navTabId as String) as Object
+    if m[fieldName] <> invalid then return m[fieldName]
+
+    screen = CreateObject("roSGNode", "BrowseScreen")
+    screen.id = fieldName
+    screen.observeField("signOutRequested", "onSignOutRequested")
+    screen.observeField("authRequired", "onAuthRequired")
+    screen.observeField("exitRequested", "onExitRequested")
+    screen.observeField("videoSelected", "onVideoSelected")
+    screen.observeField("openLegacyHomeSection", "onOpenLegacyHomeSection")
+    screen.observeField("openTabScreen", "onOpenTabScreen")
+    screen.observeField("openContinueScreen", "onOpenContinueScreenFromHome")
+    screen.observeField("openDevFonts", "onOpenDevFonts")
+    screen.callFunc("configure", contentType, navTabId)
+    m[fieldName] = screen
+    m.screenHost.appendChild(screen)
+    return screen
+end function
+
+sub showMoviesScreen()
+    hideCurrentMainScreen()
+    screen = ensureBrowseScreen("moviesScreen", "movie", "movies")
+    screen.visible = true
+    screen.setFocus(true)
+    screen.callFunc("focusContent")
+end sub
+
+sub showSeriesScreen()
+    hideCurrentMainScreen()
+    screen = ensureBrowseScreen("seriesScreen", "serial", "series")
+    screen.visible = true
+    screen.setFocus(true)
+    screen.callFunc("focusContent")
+end sub
+
+sub showLibraryScreen()
+    hideCurrentMainScreen()
+    screen = ensureBrowseScreen("libraryScreen", "", "library")
+    screen.visible = true
+    screen.setFocus(true)
+    screen.callFunc("focusContent")
+end sub
+
+sub showLiveScreen()
+    hideCurrentMainScreen()
+
+    if m.liveScreen = invalid
+        screen = CreateObject("roSGNode", "LiveScreen")
+        screen.id = "liveScreen"
+        screen.observeField("signOutRequested", "onSignOutRequested")
+        screen.observeField("authRequired", "onAuthRequired")
+        screen.observeField("exitRequested", "onExitRequested")
+        screen.observeField("livePlaybackSelected", "onLivePlaybackSelected")
+        screen.observeField("openLegacyHomeSection", "onOpenLegacyHomeSection")
+        screen.observeField("openTabScreen", "onOpenTabScreen")
+        screen.observeField("openContinueScreen", "onOpenContinueScreenFromHome")
+        screen.observeField("openDevFonts", "onOpenDevFonts")
+        m.liveScreen = screen
+        m.screenHost.appendChild(screen)
+    end if
+    m.liveScreen.visible = true
+    m.liveScreen.setFocus(true)
+end sub
+
+sub showSearchScreen()
+    hideCurrentMainScreen()
+
+    if m.searchScreen = invalid
+        screen = CreateObject("roSGNode", "SearchScreen")
+        screen.id = "searchScreen"
+        screen.observeField("signOutRequested", "onSignOutRequested")
+        screen.observeField("authRequired", "onAuthRequired")
+        screen.observeField("exitRequested", "onExitRequested")
+        screen.observeField("videoSelected", "onVideoSelected")
+        screen.observeField("openLegacyHomeSection", "onOpenLegacyHomeSection")
+        screen.observeField("openTabScreen", "onOpenTabScreen")
+        screen.observeField("openContinueScreen", "onOpenContinueScreenFromHome")
+        screen.observeField("openDevFonts", "onOpenDevFonts")
+        m.searchScreen = screen
+        m.screenHost.appendChild(screen)
+    end if
+    m.searchScreen.visible = true
+    m.searchScreen.setFocus(true)
+    m.searchScreen.callFunc("focusContent")
+end sub
+
+sub onOpenTabScreen(event as Object)
+    tabId = event.getData()
+    if tabId = "movies" then
+        showMoviesScreen()
+    else if tabId = "series" then
+        showSeriesScreen()
+    else if tabId = "library" then
+        showLibraryScreen()
+    else if tabId = "tv" then
+        showLiveScreen()
+    else if tabId = "search" then
+        showSearchScreen()
+    end if
+end sub
+
+' TEMPORARY: dev-only font picker screen, see DevFontsScreen.xml header comment.
+sub onOpenDevFonts(event as Object)
+    if event.getData() <> true then return
+    m.hiddenForDevFonts = currentMainScreen()
+    hideCurrentMainScreen()
+    devFontsScreen = CreateObject("roSGNode", "DevFontsScreen")
+    devFontsScreen.id = "devFontsScreen"
+    devFontsScreen.observeField("closeRequested", "onDevFontsClosed")
+    m.devFontsScreen = devFontsScreen
+    m.screenHost.appendChild(devFontsScreen)
+    devFontsScreen.setFocus(true)
+end sub
+
+sub onDevFontsClosed(event as Object)
+    if event.getData() <> true then return
+    if m.devFontsScreen <> invalid
+        removeScreenHostChild("devFontsScreen")
+        m.devFontsScreen = invalid
+    end if
+    if m.hiddenForDevFonts <> invalid
+        m.hiddenForDevFonts.visible = true
+        m.hiddenForDevFonts.setFocus(true)
+        m.hiddenForDevFonts = invalid
+    else if m.continueScreen <> invalid
+        m.continueScreen.visible = true
+        m.continueScreen.setFocus(true)
+    end if
+end sub
+
+sub onOpenLegacyHomeSection(event as Object)
+    section = event.getData()
+    if section = invalid or section = "" then return
+    showHomeScreen(section)
+end sub
+
+sub showHomeScreen(initialSection = "home" as String)
+    hideCurrentMainScreen()
+
+    if m.homeScreen = invalid
+        homeScreen = CreateObject("roSGNode", "HomeScreen")
+        homeScreen.id = "homeScreen"
+        homeScreen.initialSection = initialSection
+        homeScreen.observeField("signOutRequested", "onSignOutRequested")
+        homeScreen.observeField("authRequired", "onAuthRequired")
+        homeScreen.observeField("exitRequested", "onExitRequested")
+        homeScreen.observeField("videoSelected", "onVideoSelected")
+        homeScreen.observeField("livePlaybackSelected", "onLivePlaybackSelected")
+        homeScreen.observeField("openContinueScreen", "onOpenContinueScreenFromHome")
+        m.homeScreen = homeScreen
+        m.screenHost.appendChild(homeScreen)
+    end if
+    m.homeScreen.visible = true
+    m.homeScreen.setFocus(true)
+end sub
+
+sub onOpenContinueScreenFromHome(event as Object)
+    if event.getData() <> true then return
+    showContinueScreen()
 end sub
 
 sub onLivePlaybackSelected(event as Object)
@@ -73,9 +258,10 @@ sub onLivePlaybackSelected(event as Object)
 end sub
 
 sub showVideoDetailScreen(selection as Object)
-    if m.homeScreen <> invalid
-        m.homeScreen.visible = false
-    else
+    m.hiddenMainScreen = currentMainScreen()
+    if m.hiddenMainScreen <> invalid
+        m.hiddenMainScreen.visible = false
+    else if m.homeScreen = invalid and m.continueScreen = invalid and m.moviesScreen = invalid and m.seriesScreen = invalid and m.libraryScreen = invalid and m.liveScreen = invalid and m.searchScreen = invalid
         clearScreenHost()
     end if
     detailScreen = CreateObject("roSGNode", "VideoDetailScreen")
@@ -166,9 +352,31 @@ sub closePlayerScreen()
         m.detailScreen.visible = true
         m.detailScreen.setFocus(true)
         m.detailScreen.reloadRequested = true
+    else if m.hiddenMainScreen <> invalid
+        m.hiddenMainScreen.visible = true
+        m.hiddenMainScreen.setFocus(true)
+        m.hiddenMainScreen = invalid
+    else if m.continueScreen <> invalid
+        m.continueScreen.visible = true
+        m.continueScreen.setFocus(true)
     else if m.homeScreen <> invalid
         m.homeScreen.visible = true
         m.homeScreen.setFocus(true)
+    else if m.moviesScreen <> invalid
+        m.moviesScreen.visible = true
+        m.moviesScreen.setFocus(true)
+    else if m.seriesScreen <> invalid
+        m.seriesScreen.visible = true
+        m.seriesScreen.setFocus(true)
+    else if m.libraryScreen <> invalid
+        m.libraryScreen.visible = true
+        m.libraryScreen.setFocus(true)
+    else if m.liveScreen <> invalid
+        m.liveScreen.visible = true
+        m.liveScreen.setFocus(true)
+    else if m.searchScreen <> invalid
+        m.searchScreen.visible = true
+        m.searchScreen.setFocus(true)
     end if
 end sub
 
@@ -182,11 +390,33 @@ sub restoreHomeScreen()
         m.detailScreen = invalid
     end if
 
-    if m.homeScreen <> invalid
+    if m.hiddenMainScreen <> invalid
+        m.hiddenMainScreen.visible = true
+        m.hiddenMainScreen.setFocus(true)
+        m.hiddenMainScreen = invalid
+    else if m.continueScreen <> invalid
+        m.continueScreen.visible = true
+        m.continueScreen.setFocus(true)
+    else if m.homeScreen <> invalid
         m.homeScreen.visible = true
         m.homeScreen.setFocus(true)
+    else if m.moviesScreen <> invalid
+        m.moviesScreen.visible = true
+        m.moviesScreen.setFocus(true)
+    else if m.seriesScreen <> invalid
+        m.seriesScreen.visible = true
+        m.seriesScreen.setFocus(true)
+    else if m.libraryScreen <> invalid
+        m.libraryScreen.visible = true
+        m.libraryScreen.setFocus(true)
+    else if m.liveScreen <> invalid
+        m.liveScreen.visible = true
+        m.liveScreen.setFocus(true)
+    else if m.searchScreen <> invalid
+        m.searchScreen.visible = true
+        m.searchScreen.setFocus(true)
     else
-        showHomeScreen()
+        showContinueScreen()
     end if
 end sub
 
@@ -204,6 +434,14 @@ end function
 
 sub clearScreenHost()
     m.homeScreen = invalid
+    m.continueScreen = invalid
+    m.moviesScreen = invalid
+    m.seriesScreen = invalid
+    m.libraryScreen = invalid
+    m.liveScreen = invalid
+    m.searchScreen = invalid
+    m.hiddenMainScreen = invalid
+    m.hiddenForDevFonts = invalid
     m.detailScreen = invalid
     m.playerScreen = invalid
     childCount = m.screenHost.getChildCount()
@@ -211,7 +449,7 @@ sub clearScreenHost()
 end sub
 
 sub onAuthCompleted(event as Object)
-    if event.getData() = true then showHomeScreen()
+    if event.getData() = true then showContinueScreen()
 end sub
 
 sub onSignOutRequested(event as Object)

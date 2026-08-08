@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="LiveScreen" extends="Group">
+    <interface>
+        <field id="signOutRequested" type="boolean" alwaysNotify="true" />
+        <field id="authRequired" type="boolean" alwaysNotify="true" />
+        <field id="exitRequested" type="boolean" alwaysNotify="true" />
+        <field id="livePlaybackSelected" type="assocarray" alwaysNotify="true" />
+        <field id="openLegacyHomeSection" type="string" alwaysNotify="true" />
+        <field id="openContinueScreen" type="boolean" alwaysNotify="true" />
+        <field id="openTabScreen" type="string" alwaysNotify="true" />
+        <field id="openDevFonts" type="boolean" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Rectangle id="background" width="1280" height="720" color="#EEF5F8" />
+
+        <PillNavBar id="pillNav" translation="[30,14]" />
+
+        <Group id="gridHost" translation="[30,90]">
+            <Group id="gridContent" />
+        </Group>
+
+        <Group id="loadingGroup" translation="[30,90]" visible="false">
+            <Label id="loadingLabel" text="Loading..." width="700" height="60" color="#5B6B79" />
+        </Group>
+
+        <Group id="errorGroup" translation="[30,90]" visible="false">
+            <Label id="errorLabel" text="Unable to load" width="700" height="60" color="#5B6B79" />
+            <Rectangle id="errorRetryFocus" translation="[0,50]" width="196" height="44" color="#D9E9F2" visible="false" />
+            <Label id="errorRetryLabel" text="Press OK to retry" translation="[8,64]" width="500" height="30" color="#111827" />
+        </Group>
+
+        <ExitConfirmDialog id="exitDialog" visible="false" />
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+    <script type="text/brightscript" uri="pkg:/components/cards/PosterCard.brs" />
+    <script type="text/brightscript" uri="pkg:/components/screens/LiveScreen.brs" />
+</component>

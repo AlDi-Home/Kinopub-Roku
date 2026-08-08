@@ -1,6 +1,6 @@
 # KinoPub Roku Channel
 
-KinoPub Roku Channel is a small SceneGraph app for browsing and watching KinoPub content on Roku. It includes authentication, home/search views, video details, playback progress, subtitles, audio track selection, and a custom player UI.
+KinoPub Roku Channel is a small SceneGraph app for browsing and watching KinoPub content on Roku. It includes authentication, a top pill-navigation bar (Continue Watching, Movies, Series, Library, Live TV, Search), video details, playback progress, subtitles, audio track selection, and a custom player UI.
 
 This is a developer build meant to be packaged and sideloaded on a Roku device.
 

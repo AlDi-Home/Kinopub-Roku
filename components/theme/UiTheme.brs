@@ -1,0 +1,30 @@
+function UiThemeLight() as Object
+    return {
+        background: "#EEF5F8"
+        backgroundTop: "#FFFFFF"
+        backgroundBottom: "#DCEAF2"
+        surface: "#FFFFFF"
+        surfaceAlt: "#F3F7F9"
+        surfaceFocus: "#BFDBFE"
+        surfaceSelected: "#E3EEF5"
+        focusBorder: "#2563EB"
+        posterFallback: "#D9E2E8"
+        text: "#111827"
+        muted: "#5B6B79"
+        chipBg: "#F3F6F8"
+        chipBorder: "#D7DEE3"
+        chipText: "#111827"
+        pillSelectedBg: "#FFFFFF"
+        pillUnselectedBg: "#BAD1CB"
+        pillSelectedText: "#111827"
+        pillUnselectedText: "#12261F"
+        badgeBg: "#FFFFFF"
+        badgeBorder: "#D7DEE3"
+        badgeText: "#111827"
+        unwatchedBadgeBg: "#E11D2E"
+        unwatchedBadgeText: "#FFFFFF"
+        progressTrack: "#E2E8EE"
+        progressFill: "#2563EB"
+    }
+end function
+

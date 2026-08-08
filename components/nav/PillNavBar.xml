@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="PillNavBar" extends="Group">
+    <interface>
+        <field id="tabs" type="array" onChange="onTabsChanged" />
+        <field id="selectedTabId" type="string" value="" onChange="onSelectedTabIdChange" />
+        <field id="active" type="boolean" value="false" onChange="onActiveChange" />
+        <field id="tabActivated" type="string" alwaysNotify="true" />
+        <field id="focusExitDown" type="boolean" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Label id="logoLabel" text="KINOPUB" translation="[0,10]" width="180" height="30" />
+        <Group id="pillHost">
+            <Rectangle id="outerPill" />
+            <Rectangle id="focusPill" />
+            <Rectangle id="innerPill" />
+            <Group id="tabHost" />
+        </Group>
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+    <script type="text/brightscript" uri="pkg:/components/nav/PillNavBar.brs" />
+</component>
