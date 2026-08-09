@@ -5,11 +5,20 @@
 ' BrightScript sub/function names are global across every loaded script in
 ' the channel regardless of which component included them.
 
+' Builds a card's node skeleton — every node that can ever appear for the
+' given layout's flags, created once — then hands off to updatePosterCard to
+' fill in the item-specific content. Skeleton shape (which optional nodes
+' exist at all) is decided entirely by `layout`'s boolean flags, never by
+' `item`'s data, so a pooled card (components/grid/VideoGrid.brs) can be
+' rebound to a completely different item later via updatePosterCard without
+' ever changing its own child list — only visibility/content toggles per
+' rebind. Non-pooled callers (VideoDetailScreen.brs's rail rows, legacy
+' HomeScreen.brs) are unaffected: they only ever read the returned handles'
+' .node/.focusBg/.focusShadow, and this returns a superset of that.
 function createPosterCard(item as Object, layout as Object) as Object
     theme = UiThemeLight()
 
     card = CreateObject("roSGNode", "Group")
-    card.translation = [layout.x, layout.y]
     card.scaleRotateCenter = [Int(layout.cardWidth / 2), Int(layout.cardHeight / 2)]
 
     focusShadow = posterCardAppendShadow(card, layout)
@@ -42,14 +51,24 @@ function createPosterCard(item as Object, layout as Object) as Object
     poster.translation = [layout.posterX, 8]
     poster.width = layout.posterWidth
     poster.height = layout.posterHeight
-    poster.uri = item.posterUrl
     poster.loadDisplayMode = "scaleToFit"
     card.appendChild(poster)
-    posterCardAppendUnwatchedBadge(card, item, layout, theme)
-    posterCardAppendWatchedBadge(card, item, layout, theme)
+
+    handles = { node: card, focusBg: focusBg, focusShadow: focusShadow, fallback: fallback, poster: poster }
+
+    if layout.DoesExist("showUnwatchedBadge") and layout.showUnwatchedBadge
+        badge = posterCardBuildUnwatchedBadge(card, layout, theme)
+        handles.unwatchedBadgeBg = badge.bg
+        handles.unwatchedBadgeLabel = badge.label
+    end if
+
+    if layout.DoesExist("showWatchedBadge") and layout.showWatchedBadge
+        badge = posterCardBuildWatchedBadge(card, layout, theme)
+        handles.watchedBadgeBg = badge.bg
+        handles.watchedBadgeLabel = badge.label
+    end if
 
     title = CreateObject("roSGNode", "Label")
-    title.text = item.title
     title.translation = [layout.textX, layout.titleY]
     title.width = layout.textWidth
     title.height = layout.titleHeight
@@ -57,35 +76,29 @@ function createPosterCard(item as Object, layout as Object) as Object
     title.color = theme.text
     title.font.size = 18
     card.appendChild(title)
+    handles.title = title
 
     if layout.DoesExist("showYear") and layout.showYear
-        yearText = posterCardYearText(item)
-        if yearText <> ""
-            year = CreateObject("roSGNode", "Label")
-            year.text = yearText
-            yearY = 190
-            if layout.DoesExist("yearY") then yearY = layout.yearY
-            year.translation = [layout.textX, yearY]
-            year.width = layout.textWidth
-            year.height = 24
-            year.font.size = 24
-            year.horizAlign = "right"
-            year.color = theme.muted
-            card.appendChild(year)
-        end if
+        year = CreateObject("roSGNode", "Label")
+        yearY = 190
+        if layout.DoesExist("yearY") then yearY = layout.yearY
+        year.translation = [layout.textX, yearY]
+        year.width = layout.textWidth
+        year.height = 24
+        year.font.size = 24
+        year.horizAlign = "right"
+        year.color = theme.muted
+        card.appendChild(year)
+        handles.year = year
     end if
 
     subtitle = CreateObject("roSGNode", "Label")
-    subtitle.text = item.subtitle
-    if subtitle.text = "" and item.metadata <> invalid then subtitle.text = item.metadata
     subtitle.translation = [layout.textX, layout.subtitleY]
     subtitle.width = layout.textWidth
     subtitle.height = layout.subtitleHeight
     subtitle.color = theme.muted
-    subtitle.visible = false
-    if layout.DoesExist("focusOverlay") and layout.focusOverlay and subtitle.text <> "" then subtitle.visible = true
-    if layout.DoesExist("showYear") and layout.showYear then subtitle.visible = false
     card.appendChild(subtitle)
+    handles.subtitle = subtitle
 
     if layout.DoesExist("showProgress") and layout.showProgress
         progressY = 154
@@ -96,20 +109,71 @@ function createPosterCard(item as Object, layout as Object) as Object
         progressBg.width = layout.posterWidth
         progressBg.height = 5
         progressBg.color = theme.progressTrack
-        progressBg.visible = posterCardProgressVisible(item)
         card.appendChild(progressBg)
 
         progressFill = CreateObject("roSGNode", "Rectangle")
         progressFill.translation = [layout.posterX, progressY]
-        progressFill.width = posterCardProgressWidth(item, layout.posterWidth)
         progressFill.height = 5
         progressFill.color = theme.progressFill
-        progressFill.visible = progressBg.visible
         card.appendChild(progressFill)
+
+        handles.progressBg = progressBg
+        handles.progressFill = progressFill
     end if
 
-    return { node: card, focusBg: focusBg, focusShadow: focusShadow }
+    updatePosterCard(handles, item, layout)
+    return handles
 end function
+
+' Rewrites every visual field a card's skeleton supports for a (possibly
+' brand new) item + position, resetting each optional node's state before
+' reapplying it — a pooled card previously showing e.g. a watched-badged
+' movie must never "leak" that badge onto a live-TV channel card it gets
+' rebound to. `layout` supplies the current x/y (position may differ from
+' creation time — a pooled card's slot moves as the grid scrolls) and the
+' same size/flag fields createPosterCard used to build the skeleton.
+sub updatePosterCard(handles as Object, item as Object, layout as Object)
+    if layout.DoesExist("x") and layout.DoesExist("y") then handles.node.translation = [layout.x, layout.y]
+
+    handles.poster.uri = item.posterUrl
+    handles.title.text = item.title
+
+    subtitleText = item.subtitle
+    if subtitleText = invalid or subtitleText = "" then subtitleText = item.metadata
+    if subtitleText = invalid then subtitleText = ""
+    handles.subtitle.text = subtitleText
+    subtitleVisible = false
+    if layout.DoesExist("focusOverlay") and layout.focusOverlay and subtitleText <> "" then subtitleVisible = true
+    if layout.DoesExist("showYear") and layout.showYear then subtitleVisible = false
+    handles.subtitle.visible = subtitleVisible
+
+    if handles.DoesExist("year")
+        yearText = posterCardYearText(item)
+        handles.year.visible = yearText <> ""
+        if yearText <> "" then handles.year.text = yearText
+    end if
+
+    if handles.DoesExist("unwatchedBadgeBg")
+        count = posterCardIntegerField(item, "unwatchedCount", 0)
+        visible = count > 0
+        handles.unwatchedBadgeBg.visible = visible
+        handles.unwatchedBadgeLabel.visible = visible
+        if visible then handles.unwatchedBadgeLabel.text = StrI(count).Trim()
+    end if
+
+    if handles.DoesExist("watchedBadgeBg")
+        visible = posterCardBooleanField(item, "watched", false)
+        handles.watchedBadgeBg.visible = visible
+        handles.watchedBadgeLabel.visible = visible
+    end if
+
+    if handles.DoesExist("progressBg")
+        visible = posterCardProgressVisible(item)
+        handles.progressBg.visible = visible
+        handles.progressFill.visible = visible
+        if visible then handles.progressFill.width = posterCardProgressWidth(item, layout.posterWidth)
+    end if
+end sub
 
 ' Soft drop shadow shown behind the currently-focused tile, paired with a
 ' scale-up on the card itself (caller sets cardInfo.node.scale) for a "pop"
@@ -403,13 +467,10 @@ sub posterCardAppendRatingChip(card as Object, badge as Object, x as Integer, y 
 end sub
 
 ' Red top-right count badge for in-progress serials with unwatched episodes.
-' Opt-in via layout.showUnwatchedBadge; omitted when item.unwatchedCount <= 0.
-sub posterCardAppendUnwatchedBadge(card as Object, item as Object, layout as Object, theme as Object)
-    if layout.DoesExist("showUnwatchedBadge") <> true or layout.showUnwatchedBadge <> true then return
-
-    count = posterCardIntegerField(item, "unwatchedCount", 0)
-    if count <= 0 then return
-
+' Built unconditionally whenever layout.showUnwatchedBadge is set (skeleton
+' existence, not item-driven) — updatePosterCard toggles .visible per item
+' based on item.unwatchedCount.
+function posterCardBuildUnwatchedBadge(card as Object, layout as Object, theme as Object) as Object
     size = 28
     bx = layout.posterX + layout.posterWidth - size - 6
     by = 14
@@ -422,23 +483,22 @@ sub posterCardAppendUnwatchedBadge(card as Object, item as Object, layout as Obj
     card.appendChild(bg)
 
     label = CreateObject("roSGNode", "Label")
-    label.text = StrI(count).Trim()
     label.translation = [bx, by + Int((size - 22) / 2)]
     label.width = size
     label.height = 22
     label.horizAlign = "center"
     label.color = theme.unwatchedBadgeText
     card.appendChild(label)
-end sub
+
+    return { bg: bg, label: label }
+end function
 
 ' Small checkmark badge for a fully-watched season/item (bottom-left of the
 ' poster, distinct from the unwatched-count badge's top-right position since
-' an item is never both). Opt-in via layout.showWatchedBadge; omitted unless
-' item.watched is true.
-sub posterCardAppendWatchedBadge(card as Object, item as Object, layout as Object, theme as Object)
-    if layout.DoesExist("showWatchedBadge") <> true or layout.showWatchedBadge <> true then return
-    if posterCardBooleanField(item, "watched", false) <> true then return
-
+' an item is never both). Built unconditionally whenever
+' layout.showWatchedBadge is set; updatePosterCard toggles .visible per item
+' based on item.watched.
+function posterCardBuildWatchedBadge(card as Object, layout as Object, theme as Object) as Object
     size = 28
     bx = layout.posterX + 6
     by = 8 + layout.posterHeight - size - 6
@@ -458,4 +518,6 @@ sub posterCardAppendWatchedBadge(card as Object, item as Object, layout as Objec
     label.horizAlign = "center"
     label.color = theme.watchedBadgeText
     card.appendChild(label)
-end sub
+
+    return { bg: bg, label: label }
+end function

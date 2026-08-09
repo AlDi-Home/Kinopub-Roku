@@ -101,6 +101,7 @@ sub init()
     m.selection = invalid
     m.item = invalid
     m.trailer = invalid
+    m.detailRequestGeneration = 0
     m.isSeries = false
     m.hasSeasonsRow = false
     m.seasons = []
@@ -164,11 +165,14 @@ sub videoDetailScreenLoadDetail()
     end if
 
     videoDetailScreenShowState("loading")
+    m.detailRequestGeneration = m.detailRequestGeneration + 1
+    requestGeneration = m.detailRequestGeneration
     task = CreateObject("roSGNode", "ContentTask")
     task.command = "loadItemDetail"
     task.request = {
         itemId: m.selection.itemId
         mediaId: videoDetailScreenSelectedMediaId()
+        generation: requestGeneration
     }
     if m.selection.DoesExist("targetSeasonNumber") then task.request.targetSeasonNumber = m.selection.targetSeasonNumber
     if m.selection.DoesExist("targetEpisodeNumber") then task.request.targetEpisodeNumber = m.selection.targetEpisodeNumber
@@ -179,8 +183,15 @@ sub videoDetailScreenLoadDetail()
     m.detailTask = task
 end sub
 
+' A newer videoDetailScreenLoadDetail() call (e.g. selecting a recommendation
+' tile reloads this same screen instance) can leave an older ContentTask
+' still running on its own thread with no way to cancel it — Roku Tasks have
+' no cancel-on-reassignment lifecycle event, so its response would otherwise
+' still land here and overwrite the newer page. Ignore anything that isn't
+' for the request we're currently waiting on.
 sub onDetailResponse(event as Object)
     response = event.getData()
+    if response <> invalid and response.generation <> invalid and response.generation <> m.detailRequestGeneration then return
     if response = invalid or response.ok <> true
         if videoDetailScreenResponseRequiresSignIn(response)
             videoDetailScreenRequestSignInAgain(response)
@@ -199,7 +210,6 @@ sub onDetailResponse(event as Object)
 
     m.item = response.item
     m.trailer = invalid
-    if m.item.trailer <> invalid then m.trailer = m.item.trailer
     videoDetailScreenCancelPlaybackPreflight()
     videoDetailScreenBuildPlayableModel()
     m.isSeries = m.item.seasons <> invalid and m.item.seasons.Count() > 0
@@ -232,6 +242,50 @@ sub onDetailResponse(event as Object)
     videoDetailScreenUpdateDescriptionFocus()
     videoDetailScreenLoadItemBookmarkFolders()
     videoDetailScreenShowState("detail")
+    videoDetailScreenLoadDetailExtras(response.itemId, m.detailRequestGeneration)
+end sub
+
+' Similar items (recommendations row) and the trailer are non-critical —
+' fired only after the base page has already rendered, so they never delay
+' first paint (see contentTaskLoadItemDetailExtras).
+sub videoDetailScreenLoadDetailExtras(itemId as Integer, requestGeneration as Integer)
+    task = CreateObject("roSGNode", "ContentTask")
+    task.command = "loadItemDetailExtras"
+    task.request = { itemId: itemId, generation: requestGeneration }
+    task.observeField("response", "onDetailExtrasResponse")
+    task.control = "RUN"
+    m.detailExtrasTask = task
+end sub
+
+sub onDetailExtrasResponse(event as Object)
+    response = event.getData()
+    if response = invalid or response.generation <> m.detailRequestGeneration then return
+    if response.ok <> true or m.item = invalid then return
+
+    m.item.similarItems = response.similarItems
+    m.item.trailer = response.trailer
+    m.trailer = response.trailer
+
+    previousActionId = ""
+    if m.actionRows.Count() > 0 and m.selectedActionIndex < m.actionRows.Count() then previousActionId = m.actionRows[m.selectedActionIndex].id
+    videoDetailScreenRenderActions()
+    if previousActionId <> ""
+        for i = 0 to m.actionRows.Count() - 1
+            if m.actionRows[i].id = previousActionId
+                m.selectedActionIndex = i
+                exit for
+            end if
+        end for
+        videoDetailScreenUpdateActionsFocus()
+    end if
+
+    ' The recommendations row is only safe to splice into the already-built
+    ' content row list before the user has scrolled into it — recommendations
+    ' arrive well before hero->actions->content navigation is realistically
+    ' possible, so skipping the rare late case is not a practical regression.
+    if m.focusArea = "actions" or m.focusArea = "description"
+        videoDetailScreenRenderContent()
+    end if
 end sub
 
 function videoDetailScreenSelectedMediaId() as Integer

@@ -51,6 +51,7 @@ required_files=(
   components/dialogs/ListPickerDialog.xml
   components/dialogs/ListPickerDialog.brs
   components/cards/PosterCard.brs
+  components/grid/VideoGrid.brs
   components/theme/UiTheme.brs
   components/tasks/AuthTask.xml
   components/tasks/AuthTask.brs
@@ -65,6 +66,9 @@ required_files=(
   images/ui/icon-kinopub.png
   images/ui/icon-search.png
   images/ui/icon-settings.png
+  images/ui/icon-subtitles.png
+  images/ui/icon-audio.png
+  images/ui/icon-quality.png
   images/ui/backdrop-scrim.png
   components/fonts/RokuText-Regular.otf
   config/kinoapi.example.json
@@ -497,14 +501,25 @@ grep -q "subtitleTracks" source/services/KinoItemService.brs
 grep -q "kinoItemQualityOptions" source/services/KinoItemService.brs
 grep -q "addQualityUrlOptions: kinoItemAddQualityUrlOptions" source/services/KinoItemService.brs
 grep -q "sub kinoItemAddQualityUrlOptions" source/services/KinoItemService.brs
-grep -q 'hlsKeys = \["hls4", "hls2", "http", "hls"\]' source/services/KinoItemService.brs
-grep -q 'for each key in \["hls4", "hls2", "http", "hls"\]' source/services/KinoItemService.brs
-grep -q 'if key = "http" then format = "mp4"' source/services/KinoItemService.brs
+grep -q 'hlsKeys = \["hls4", "hls2", "hls"\]' source/services/KinoItemService.brs
+grep -q 'for each key in \["hls4", "hls2", "hls"\]' source/services/KinoItemService.brs
+# "http" (direct mp4 file) must stay excluded everywhere in the HLS-only
+# stream-resolution helpers — no format ever gets set to "mp4" here.
+if grep -E 'format\s*[:=]\s*"mp4"' source/services/KinoItemService.brs; then
+  echo "KinoItemService.brs must not offer mp4/http direct-file streams — HLS-only." >&2
+  exit 1
+fi
 grep -q "kinoItemTrackOptions" source/services/KinoItemService.brs
+# Roku doesn't support AC3/E-AC3 decode on most models — audio tracks with
+# that codec must never be offered as a pickable option.
+grep -q 'codec = LCase(m.stringField(track, "codec", ""))' source/services/KinoItemService.brs
+grep -q 'if Instr(1, codec, "ac3") = 0' source/services/KinoItemService.brs
+grep -q "function audioMenuAllowedLabels" components/screens/PlayerScreen.brs
+grep -q 'isAc3 = Instr(1, LCase(label), "ac3") > 0' components/screens/PlayerScreen.brs
 grep -q "similarResult = itemService.similar" components/tasks/ContentTask.brs
 grep -q "trailerResult = itemService.trailer" components/tasks/ContentTask.brs
-grep -q "result.item.similarItems = similarResult.items" components/tasks/ContentTask.brs
-grep -q "result.item.trailer = trailerResult.trailer" components/tasks/ContentTask.brs
+grep -q "function contentTaskLoadItemDetailExtras" components/tasks/ContentTask.brs
+grep -q '"loadItemDetailExtras"' components/tasks/ContentTask.brs
 grep -q "KinoSearchService.brs" components/tasks/ContentTask.xml
 grep -q "KinoSearchService(client)" components/tasks/ContentTask.brs
 grep -q "searchItems" components/tasks/ContentTask.brs
@@ -816,10 +831,32 @@ if grep -A 8 "sub startPlaybackAtPosition" components/screens/PlayerScreen.brs |
   echo "Normal playback start must not stop the freshly assigned Video content before play." >&2
   exit 1
 fi
+# Setting m.videoNode.seek before state="playing" doesn't reliably take
+# effect on-device (confirmed: resuming from a saved position silently
+# played from 0) — same timing quirk as the audio-preference check above.
+# The resume seek must be deferred to onVideoStateChanged's "playing"
+# branch via m.pendingResumeSeekPosition, not set directly here.
+if grep -A 8 "sub startPlaybackAtPosition" components/screens/PlayerScreen.brs | grep -q "m.videoNode.seek ="; then
+  echo "Resume seek must be deferred via m.pendingResumeSeekPosition until state=\"playing\", not set directly in startPlaybackAtPosition." >&2
+  exit 1
+fi
+grep -q "m.pendingResumeSeekPosition = startPosition" components/screens/PlayerScreen.brs
+grep -A 8 'if state = "playing"' components/screens/PlayerScreen.brs | grep -q "m.pendingResumeSeekPosition > 0"
 if ! grep -A 8 "sub restartPlaybackFromBeginning" components/screens/PlayerScreen.brs | grep -q 'm.videoNode.content = playbackContentNode'; then
   echo "Start from beginning must rebuild content before playing from 0." >&2
   exit 1
 fi
+# A fresh ContentNode resets Roku's own audio-track selection — every place
+# that reassigns m.videoNode.content mid-session must re-arm
+# applySavedAudioPreference's one-shot guard, or the user's saved audio
+# track silently reverts to the stream default (confirmed regression:
+# "Сначала" reset the audio track back to default).
+for reloadFn in restartPlaybackFromBeginning reloadPlaybackWithSubtitle reloadPlaybackWithQuality; do
+  if ! grep -A 12 "sub ${reloadFn}" components/screens/PlayerScreen.brs | grep -q "m.savedAudioPreferenceApplied = false"; then
+    echo "${reloadFn} must reset m.savedAudioPreferenceApplied = false before reassigning m.videoNode.content." >&2
+    exit 1
+  fi
+done
 grep -q "savePlaybackProgress" components/screens/PlayerScreen.brs
 grep -q "sendProgressUpdate" components/screens/PlayerScreen.brs
 grep -q 'if reason = "start" and position < 15 then return' components/screens/PlayerScreen.brs
@@ -872,8 +909,43 @@ if grep -A 20 "sub startPlayback" components/screens/PlayerScreen.brs | grep -q 
 fi
 grep -q "m.controlFocusY = 234" components/screens/PlayerScreen.brs
 grep -q "m.focusCursor.translation = \\[m.controlPositions\\[m.focusIndex\\], m.controlFocusY\\]" components/screens/PlayerScreen.brs
-grep -q "updatePlayPauseControlLabel()" components/screens/PlayerScreen.brs
-grep -q "updateControlLabels()" components/screens/PlayerScreen.brs
+grep -q "function controlIconUri" components/screens/PlayerScreen.brs
+grep -q 'm.controls = \["stats", "subtitles", "audio", "quality"\]' components/screens/PlayerScreen.brs
+grep -q "sub toggleStatsOverlay" components/screens/PlayerScreen.brs
+grep -q "sub updateStatsOverlayText" components/screens/PlayerScreen.brs
+grep -q "sub onStatsOverlayTimer" components/screens/PlayerScreen.brs
+grep -q '<Timer id="statsOverlayTimer" repeat="true" duration="2"' components/screens/PlayerScreen.xml
+# Bitrate was dropped from the stats overlay entirely — confirmed on-device
+# that Video.downloadedSegment/streamingSegment never fire for this content
+# at all (not just empty fields), so there's no live figure obtainable.
+if grep -q "Bitrate:" components/screens/PlayerScreen.brs; then
+  echo "Stats overlay must not show a Bitrate line — confirmed unobtainable on-device, don't reintroduce a stuck placeholder." >&2
+  exit 1
+fi
+grep -q "sub hideRail" components/screens/PlayerScreen.brs
+grep -q 'm.focusArea = "controls"' components/screens/PlayerScreen.brs
+# "Сначала"/"Следующая серия" — manually invoked via Down while the OSD is
+# hidden, distinct from the auto-triggered nextEpisodePromptGroup.
+grep -q "sub showStartOverPrompt" components/screens/PlayerScreen.brs
+grep -q "function handleStartOverPromptKey" components/screens/PlayerScreen.brs
+grep -q "sub chooseStartOverPromptOption" components/screens/PlayerScreen.brs
+grep -q "sub requestManualNextEpisode" components/screens/PlayerScreen.brs
+grep -q 'reason: "manualNext"' components/screens/PlayerScreen.brs
+grep -q 'if response.reason = "seasonCarousel" or response.reason = "manualNext"' components/screens/PlayerScreen.brs
+grep -q 'id="startOverPromptGroup"' components/screens/PlayerScreen.xml
+grep -q 'if m.startOverPromptOpen then return handleStartOverPromptKey(key)' components/screens/PlayerScreen.brs
+grep -q "function bestQualityOptionIndex" components/screens/PlayerScreen.brs
+grep -q "function autoApplySavedSubtitlePreferenceEnabled" components/screens/PlayerScreen.brs
+grep -q "function bestQualityOptionIndex" components/screens/PlayerScreen.brs
+grep -q "function autoApplySavedSubtitlePreferenceEnabled" components/screens/PlayerScreen.brs
+grep -q 'id="statsOverlayGroup"' components/screens/PlayerScreen.xml
+# The stats overlay is deliberately NOT wired into onKeyEvent's overlay
+# precedence chain (Back must not be attached to it — only the gear
+# control's own OK toggles it).
+if grep -q "handleStatsOverlayKey" components/screens/PlayerScreen.brs; then
+  echo "Stats overlay must stay independent of Back/onKeyEvent precedence — no handleStatsOverlayKey." >&2
+  exit 1
+fi
 grep -q "selectedQualityLabel()" components/screens/PlayerScreen.brs
 grep -q "selectedAudioLabel()" components/screens/PlayerScreen.brs
 grep -q "selectedSubtitleLabel()" components/screens/PlayerScreen.brs
@@ -973,6 +1045,44 @@ fi
 
 if grep -R "CreateObject(\"roUrlTransfer\")" source components | grep -v "source/services/KinoApiClient.brs"; then
   echo "Direct roUrlTransfer usage found outside KinoApiClient." >&2
+  exit 1
+fi
+
+# --- Perf/correctness fixes from the Codex review ---
+
+# Fix 1: stale detail-page response guard.
+grep -q "m.detailRequestGeneration" components/screens/VideoDetailScreen.brs
+grep -q "generation: requestGeneration" components/screens/VideoDetailScreen.brs
+grep -q 'generation = contentTaskIntegerField(request, "generation", 0)' components/tasks/ContentTask.brs
+
+# Fix 2: KinoApiClient response-body logging gated to dev builds, oauth bodies redacted always.
+grep -q "#if DEV_BUILD" source/services/KinoApiClient.brs
+grep -q 'Left(path, 8) = "/oauth2/"' source/services/KinoApiClient.brs
+
+# Fix 3: similar items/trailer fetched off the detail page's critical path.
+grep -q "function contentTaskLoadItemDetailExtras" components/tasks/ContentTask.brs
+grep -q '"loadItemDetailExtras"' components/tasks/ContentTask.brs
+grep -q "sub videoDetailScreenLoadDetailExtras" components/screens/VideoDetailScreen.brs
+grep -q "sub onDetailExtrasResponse" components/screens/VideoDetailScreen.brs
+
+# Fix 4: single token-refresh preflight before a screen's concurrent task fan-out.
+grep -q "function contentTaskEnsureFreshTokens" components/tasks/ContentTask.brs
+grep -q '"ensureFreshTokens"' components/screens/ContinueScreen.brs
+grep -q '"ensureFreshTokens"' components/screens/SettingsScreen.brs
+
+# Fix 5: shared virtual poster grid (components/grid/VideoGrid.brs) — Browse/
+# Search/Live/Continue no longer build one card node per item.
+grep -q "function VideoGridPool" components/grid/VideoGrid.brs
+grep -q "sub videoGridPoolSetItems" components/grid/VideoGrid.brs
+grep -q "sub videoGridPoolSetFocus" components/grid/VideoGrid.brs
+grep -q "sub videoGridPoolRebindWindow" components/grid/VideoGrid.brs
+grep -q "sub updatePosterCard" components/cards/PosterCard.brs
+for gridScreen in BrowseScreen SearchScreen LiveScreen ContinueScreen; do
+  grep -q "pkg:/components/grid/VideoGrid.brs" "components/screens/${gridScreen}.xml"
+  grep -q "m.gridPool = VideoGridPool(" "components/screens/${gridScreen}.brs"
+done
+if grep -R "gridCardNodes" components/screens/BrowseScreen.brs components/screens/SearchScreen.brs components/screens/LiveScreen.brs components/screens/ContinueScreen.brs; then
+  echo "Grid screens must go through m.gridPool (components/grid/VideoGrid.brs), not a per-item gridCardNodes array." >&2
   exit 1
 fi
 

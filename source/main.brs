@@ -4,6 +4,7 @@ sub Main()
     screen.SetMessagePort(port)
     scene = screen.CreateScene("AppScene")
     screen.Show()
+    ' vscode_rdb_on_device_component_entry
     scene.observeField("exitRequested", port)
 
     while true

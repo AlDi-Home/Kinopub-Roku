@@ -69,6 +69,11 @@ sub init()
     settingsScreenLoadAll()
 end sub
 
+' Fires a single token-refresh preflight before the real fan-out below —
+' otherwise both tasks below would independently discover an expired token
+' and race to refresh it concurrently (TokenStore.brs has no cross-task
+' locking; the losing refresh call fails against an already-rotated token and
+' signs the user out). No-op HTTP-wise if the token is already valid.
 sub settingsScreenLoadAll()
     settingsScreenShowState("loading")
     m.accountReady = false
@@ -77,6 +82,19 @@ sub settingsScreenLoadAll()
     m.deviceFailed = false
     m.settingsMessageLabel.text = ""
 
+    preflightTask = CreateObject("roSGNode", "ContentTask")
+    preflightTask.command = "ensureFreshTokens"
+    preflightTask.request = {}
+    preflightTask.observeField("response", "onTokenPreflightResponse")
+    preflightTask.control = "RUN"
+    m.preflightTask = preflightTask
+end sub
+
+sub onTokenPreflightResponse(event as Object)
+    settingsScreenLoadAllContent()
+end sub
+
+sub settingsScreenLoadAllContent()
     accountTask = CreateObject("roSGNode", "ContentTask")
     accountTask.command = "loadUserInfo"
     accountTask.request = {}

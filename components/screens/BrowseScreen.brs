@@ -49,11 +49,9 @@ sub init()
     m.gridCardWidth = 170
     m.gridCardGapX = 22
     m.gridCardGapY = 26
-    m.gridRowStep = 0
-    m.gridContentOffsetY = 0
     m.gridViewportHeight = 596
-    m.gridScrollAnimation = invalid
-    m.gridScrollInterpolator = invalid
+    m.gridPool = invalid
+    m.gridEmptyLabel = invalid
 
     ' Same clipping-padding trick as ContinueScreen.brs: shift the viewport
     ' up-left, grow the clip region by the pad on every side, shift the
@@ -61,7 +59,9 @@ sub init()
     ' without getting clipped at the viewport edges. Base position/viewport
     ' height depend on mode (filterbar has no left column but does have a
     ' filter bar above it), so this is finished off by browseScreenLayoutGrid,
-    ' called from configure() once the mode is known.
+    ' called from configure() once the mode is known — that's also where
+    ' m.gridPool (components/grid/VideoGrid.brs) gets built, since it needs
+    ' the final m.gridColumns/m.gridViewportHeight.
     m.gridPad = 44
 
     ' Filter bar (Library / "filterbar" mode): 5 buttons, findNode'd once in
@@ -118,7 +118,6 @@ sub init()
     m.selectedRowIndex = 0
     m.selectedGridIndex = 0
     m.gridItems = []
-    m.gridCardNodes = []
     m.gridPage = 0
     m.gridPagination = invalid
     m.gridPendingIsAppend = false
@@ -150,7 +149,7 @@ sub configure(contentType as String, navTabId as String)
         ' spacing: the focus-pop scale/shadow effect on the top row relies
         ' on ~44px of clip padding (m.gridPad) to not get cut off, and
         ' clippingRect isn't reliably enforced on every runtime this ships
-        ' to (see the windowing comment on browseScreenUpdateGridVisibility)
+        ' to (see the windowing comment in components/grid/VideoGrid.brs)
         ' — so that padding routinely renders unclipped. A gap smaller than
         ' the pad (previously 26px here) let the top row's popped card bleed
         ' straight into the filter bar. Bottom margin is trimmed to 16
@@ -184,6 +183,26 @@ sub browseScreenLayoutGrid(gridBaseX as Integer, gridBaseY as Integer, viewportH
     m.gridHost.translation = [gridBaseX - m.gridPad, gridBaseY - m.gridPad]
     m.gridHost.clippingRect = [0, 0, contentWidth + (m.gridPad * 2), m.gridViewportHeight + (m.gridPad * 2)]
     m.gridContent.translation = [m.gridPad, m.gridPad]
+
+    ' Called once per instance (from configure(), after m.gridColumns is
+    ' final for this instance's mode) — see components/grid/VideoGrid.brs.
+    m.gridPool = VideoGridPool({
+        scriptRoot: m.top
+        content: m.gridContent
+        columns: m.gridColumns
+        cardWidth: m.gridCardWidth
+        cardGapX: m.gridCardGapX
+        cardGapY: m.gridCardGapY
+        viewportHeight: m.gridViewportHeight
+        pad: m.gridPad
+    })
+    m.gridEmptyLabel = CreateObject("roSGNode", "Label")
+    m.gridEmptyLabel.text = "Нет результатов"
+    m.gridEmptyLabel.width = 700
+    m.gridEmptyLabel.height = 40
+    m.gridEmptyLabel.color = UiThemeLight().muted
+    m.gridEmptyLabel.visible = false
+    m.gridContent.appendChild(m.gridEmptyLabel)
 end sub
 
 ' Left list is the KinoPub "shortcut" video lists — dedicated endpoints, not
@@ -604,11 +623,9 @@ sub onBrowseItemsResponse(event as Object)
     m.gridPage = response.page
 
     if isAppend
-        startIndex = m.gridItems.Count()
         m.gridItems.Append(response.items)
         if m.gridPagination <> invalid and m.gridPagination.total_items <= m.gridItems.Count() then m.gridReachedEnd = true
-        browseScreenAppendGridItems(startIndex, response.items)
-        browseScreenUpdateGridVisibility()
+        m.gridPool.appendItems(m.gridItems.Count())
     else
         m.gridItems = response.items
         if m.gridPagination <> invalid and m.gridPagination.total_items <= m.gridItems.Count() then m.gridReachedEnd = true
@@ -626,127 +643,25 @@ sub onBrowseItemsResponse(event as Object)
 end sub
 
 sub browseScreenResetGrid()
-    childCount = m.gridContent.getChildCount()
-    if childCount > 0 then m.gridContent.removeChildrenIndex(childCount, 0)
-    m.gridCardNodes = []
-    m.gridContentOffsetY = 0
-    m.gridContent.translation = [m.gridPad, m.gridPad]
-
-    if m.gridItems.Count() = 0
-        empty = CreateObject("roSGNode", "Label")
-        empty.text = "Нет результатов"
-        empty.width = 700
-        empty.height = 40
-        empty.color = UiThemeLight().muted
-        m.gridContent.appendChild(empty)
-        m.gridRowStep = 0
-        return
-    end if
-
-    m.gridRowStep = posterCompactLayout(0, 0, m.gridCardWidth).cardHeight + m.gridCardGapY
-    browseScreenAppendGridItems(0, m.gridItems)
-    browseScreenUpdateGridVisibility()
+    m.gridEmptyLabel.visible = (m.gridItems.Count() = 0)
+    m.gridPool.setItems(m.gridItems)
     browseScreenUpdateGridFocus()
 end sub
 
-sub browseScreenAppendGridItems(startIndex as Integer, newItems as Object)
-    if m.gridRowStep = 0 then m.gridRowStep = posterCompactLayout(0, 0, m.gridCardWidth).cardHeight + m.gridCardGapY
-    columns = m.gridColumns
-    cardW = m.gridCardWidth
-
-    for i = 0 to newItems.Count() - 1
-        index = startIndex + i
-        gridItem = newItems[i]
-        column = index MOD columns
-        row = Int(index / columns)
-
-        x = column * (cardW + m.gridCardGapX)
-        y = row * m.gridRowStep
-        layout = posterCompactLayout(x, y, cardW)
-
-        cardInfo = createPosterCard(gridItem, layout)
-        m.gridContent.appendChild(cardInfo.node)
-        m.gridCardNodes.Push({ node: cardInfo.node, focusBg: cardInfo.focusBg, focusShadow: cardInfo.focusShadow, index: index, row: row })
-    end for
-end sub
-
-' Same strict zero-buffer visibility windowing as ContinueScreen.brs — not
-' relying on clippingRect being enforced on every runtime this ships to.
-sub browseScreenUpdateGridVisibility()
-    if m.gridRowStep = 0 then return
-    firstVisibleRow = Int(m.gridContentOffsetY / m.gridRowStep)
-    lastVisibleRow = Int((m.gridContentOffsetY + m.gridViewportHeight - 1) / m.gridRowStep)
-    for each cardNode in m.gridCardNodes
-        cardNode.node.visible = (cardNode.row >= firstVisibleRow) and (cardNode.row <= lastVisibleRow)
-    end for
-end sub
-
+' Delegates to the shared virtual grid (components/grid/VideoGrid.brs) —
+' see its header comment for why this no longer builds a card node per item.
 sub browseScreenUpdateGridFocus()
-    theme = UiThemeLight()
-    for each cardNode in m.gridCardNodes
-        isFocused = cardNode.index = m.selectedGridIndex and m.focusArea = "grid"
-        cardNode.focusShadow.visible = isFocused
-        if isFocused
-            cardNode.focusBg.color = theme.surfaceFocus
-            cardNode.node.scale = [1.16, 1.16]
-        else
-            cardNode.focusBg.color = theme.surface
-            cardNode.node.scale = [1.0, 1.0]
-        end if
-    end for
-    browseScreenScrollGridToFocus()
+    m.gridPool.setFocus(m.selectedGridIndex, m.focusArea = "grid")
     browseScreenMaybeLoadNextPage()
 end sub
 
-sub browseScreenScrollGridToFocus()
-    if m.gridCardNodes.Count() = 0 or m.gridRowStep = 0 then return
-
-    focusedRow = Int(m.selectedGridIndex / m.gridColumns)
-    rowTop = focusedRow * m.gridRowStep
-    rowBottom = rowTop + m.gridRowStep
-
-    currentOffset = m.gridContentOffsetY
-    newOffset = currentOffset
-
-    if rowTop < currentOffset
-        newOffset = rowTop
-    else if rowBottom > (currentOffset + m.gridViewportHeight)
-        newOffset = rowBottom - m.gridViewportHeight
-    end if
-
-    if newOffset < 0 then newOffset = 0
-    if newOffset <> currentOffset
-        browseScreenAnimateGridScroll(currentOffset, newOffset)
-        m.gridContentOffsetY = newOffset
-        browseScreenUpdateGridVisibility()
-    end if
-end sub
-
-sub browseScreenAnimateGridScroll(fromY as Integer, toY as Integer)
-    if m.gridScrollAnimation = invalid
-        animation = CreateObject("roSGNode", "Animation")
-        animation.duration = 0.25
-        animation.easeFunction = "inOutQuad"
-        interpolator = CreateObject("roSGNode", "Vector2DFieldInterpolator")
-        interpolator.key = [0, 1]
-        interpolator.fieldToInterp = "gridContent.translation"
-        animation.appendChild(interpolator)
-        m.top.appendChild(animation)
-        m.gridScrollAnimation = animation
-        m.gridScrollInterpolator = interpolator
-    end if
-
-    m.gridScrollInterpolator.keyValue = [[m.gridPad, m.gridPad - fromY], [m.gridPad, m.gridPad - toY]]
-    m.gridScrollAnimation.control = "start"
-end sub
-
 ' Fetch the next page once focus is within 2 rows of the bottom of what's
-' currently loaded. Guarded by a flat item cap (see m.gridItemCap, init())
-' rather than true node virtualization — a pragmatic bound for this pass.
+' currently loaded. Guarded by a flat item cap (see m.gridItemCap, init()) —
+' this bounds how many items the data list itself grows to; node/texture
+' count is separately bounded by m.gridPool regardless of list length.
 sub browseScreenMaybeLoadNextPage()
     if m.gridLoadingMore or m.gridReachedEnd then return
     if m.gridItems.Count() = 0 or m.gridItems.Count() >= m.gridItemCap then return
-    if m.gridRowStep = 0 then return
 
     totalRows = Int((m.gridItems.Count() - 1) / m.gridColumns) + 1
     focusedRow = Int(m.selectedGridIndex / m.gridColumns)

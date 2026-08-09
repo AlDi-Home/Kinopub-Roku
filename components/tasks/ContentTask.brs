@@ -33,6 +33,8 @@ sub runContentTask()
         m.top.response = contentTaskLoadHome(tokenStoreService, authService, homeService, typeService, request)
     else if command = "loadItemDetail"
         m.top.response = contentTaskLoadItemDetail(tokenStoreService, authService, itemService, request)
+    else if command = "loadItemDetailExtras"
+        m.top.response = contentTaskLoadItemDetailExtras(tokenStoreService, authService, itemService, request)
     else if command = "refreshMediaLinks"
         m.top.response = contentTaskRefreshMediaLinks(tokenStoreService, authService, itemService, request)
     else if command = "loadSearchOptions"
@@ -67,6 +69,8 @@ sub runContentTask()
         m.top.response = contentTaskMarkPlaybackWatched(tokenStoreService, authService, watchingService, request)
     else if command = "toggleEpisodeWatched"
         m.top.response = contentTaskToggleEpisodeWatched(tokenStoreService, authService, watchingService, request)
+    else if command = "ensureFreshTokens"
+        m.top.response = contentTaskEnsureFreshTokens(tokenStoreService, authService)
     else
         m.top.response = { command: command, ok: false, error: "unknown_command", message: "Unknown content task command." }
     end if
@@ -224,52 +228,73 @@ end function
 function contentTaskLoadItemDetail(tokenStoreService as Object, authService as Object, itemService as Object, request as Dynamic) as Object
     itemId = contentTaskIntegerField(request, "itemId", 0)
     mediaId = contentTaskIntegerField(request, "mediaId", 0)
+    generation = contentTaskIntegerField(request, "generation", 0)
     if itemId <= 0
-        return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, error: "invalid_item", message: "Unable to open this video.", status: 0 }
+        return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, generation: generation, error: "invalid_item", message: "Unable to open this video.", status: 0 }
     end if
 
     tokenResult = contentTaskUsableTokens(tokenStoreService, authService)
 
     if tokenResult.ok <> true
         if tokenResult.error = "auth_required"
-            return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, error: "auth_required", message: "Sign in again to load video details.", status: 0 }
+            return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, generation: generation, error: "auth_required", message: "Sign in again to load video details.", status: 0 }
         end if
-        return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, error: tokenResult.error, message: tokenResult.message, status: tokenResult.status }
+        return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, generation: generation, error: tokenResult.error, message: tokenResult.message, status: tokenResult.status }
     end if
 
     tokens = tokenResult.tokens
     if tokens = invalid
-        return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, error: "auth_required", message: "Sign in again to load video details.", status: 0 }
+        return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, generation: generation, error: "auth_required", message: "Sign in again to load video details.", status: 0 }
     end if
 
     accessToken = contentTaskTokenString(tokens, "accesstoken")
     if accessToken = "" then accessToken = contentTaskTokenString(tokens, "accessToken")
-    if accessToken = "" then return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, error: "auth_required", message: "Sign in again to load video details.", status: 0 }
+    if accessToken = "" then return { command: "loadItemDetail", ok: false, itemId: itemId, mediaId: mediaId, generation: generation, error: "auth_required", message: "Sign in again to load video details.", status: 0 }
 
+    ' Similar items and the trailer are fetched separately by
+    ' contentTaskLoadItemDetailExtras, kicked off by the screen only after
+    ' this response has already painted the page — keeps two extra sequential
+    ' round trips off the initial-paint critical path.
     result = itemService.detail(accessToken, itemId)
     if result.ok = true and result.item <> invalid
-        similarResult = itemService.similar(accessToken, itemId)
-        if similarResult.ok = true
-            result.item.similarItems = similarResult.items
-        else
-            result.item.similarItems = []
-        end if
-
-        trailerResult = itemService.trailer(accessToken, itemId)
-        if trailerResult.ok = true
-            result.item.trailer = trailerResult.trailer
-        else
-            result.item.trailer = invalid
-        end if
+        result.item.similarItems = []
+        result.item.trailer = invalid
     end if
     result.command = "loadItemDetail"
     result.itemId = itemId
     result.mediaId = mediaId
+    result.generation = generation
     result.targetSeasonNumber = contentTaskIntegerField(request, "targetSeasonNumber", 0)
     result.targetEpisodeNumber = contentTaskIntegerField(request, "targetEpisodeNumber", 0)
     result.seasonNumber = contentTaskIntegerField(request, "seasonNumber", 0)
     result.episodeNumber = contentTaskIntegerField(request, "episodeNumber", 0)
     return result
+end function
+
+function contentTaskLoadItemDetailExtras(tokenStoreService as Object, authService as Object, itemService as Object, request as Dynamic) as Object
+    itemId = contentTaskIntegerField(request, "itemId", 0)
+    generation = contentTaskIntegerField(request, "generation", 0)
+    if itemId <= 0
+        return { command: "loadItemDetailExtras", ok: false, itemId: itemId, generation: generation, error: "invalid_item", message: "Unable to load extra details." }
+    end if
+
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to load video details.")
+    if tokenResult.ok <> true
+        tokenResult.command = "loadItemDetailExtras"
+        tokenResult.itemId = itemId
+        tokenResult.generation = generation
+        return tokenResult
+    end if
+
+    similarItems = []
+    similarResult = itemService.similar(tokenResult.accessToken, itemId)
+    if similarResult.ok = true then similarItems = similarResult.items
+
+    trailer = invalid
+    trailerResult = itemService.trailer(tokenResult.accessToken, itemId)
+    if trailerResult.ok = true then trailer = trailerResult.trailer
+
+    return { command: "loadItemDetailExtras", ok: true, itemId: itemId, generation: generation, similarItems: similarItems, trailer: trailer }
 end function
 
 function contentTaskRefreshMediaLinks(tokenStoreService as Object, authService as Object, itemService as Object, request as Dynamic) as Object
@@ -556,6 +581,21 @@ function contentTaskAccessToken(tokenStoreService as Object, authService as Obje
     if accessToken = "" then return { ok: false, error: "auth_required", message: message, status: 0 }
 
     return { ok: true, accessToken: accessToken }
+end function
+
+' Screens that fan out several concurrent ContentTasks on load (e.g.
+' ContinueScreen, SettingsScreen) fire this alone first and wait for it,
+' rather than letting each of those tasks independently discover an expired
+' token and race each other to refresh it — TokenStore.brs has no cross-task
+' locking, and a losing refresh call fails against an already-rotated token
+' and signs the user out. If the token is already valid this makes no HTTP
+' call at all.
+function contentTaskEnsureFreshTokens(tokenStoreService as Object, authService as Object) as Object
+    tokenResult = contentTaskUsableTokens(tokenStoreService, authService)
+    if tokenResult.ok <> true
+        return { command: "ensureFreshTokens", ok: false, error: tokenResult.error, message: tokenResult.message, status: tokenResult.status }
+    end if
+    return { command: "ensureFreshTokens", ok: true }
 end function
 
 function contentTaskTypeMap(typeService as Object, accessToken as String) as Object

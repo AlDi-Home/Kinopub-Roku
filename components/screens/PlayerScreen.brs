@@ -30,6 +30,8 @@ sub init()
     m.menuTitleLabel = m.top.findNode("menuTitleLabel")
     m.menuItemsHost = m.top.findNode("menuItemsHost")
     m.statusLabel = m.top.findNode("statusLabel")
+    m.statsOverlayGroup = m.top.findNode("statsOverlayGroup")
+    m.statsOverlayLinesHost = m.top.findNode("statsOverlayLinesHost")
     m.railHideTimer = m.top.findNode("railHideTimer")
     m.progressTimer = m.top.findNode("progressTimer")
     m.statusClearTimer = m.top.findNode("statusClearTimer")
@@ -42,15 +44,24 @@ sub init()
     m.bufferingDebounceTimer = m.top.findNode("bufferingDebounceTimer")
     m.seekDebounceTimer = m.top.findNode("seekDebounceTimer")
     m.seekSettleTimer = m.top.findNode("seekSettleTimer")
+    m.statsOverlayTimer = m.top.findNode("statsOverlayTimer")
+    m.startOverPromptGroup = m.top.findNode("startOverPromptGroup")
+    m.startOverPromptOptionsHost = m.top.findNode("startOverPromptOptionsHost")
+    m.startOverPromptTimer = m.top.findNode("startOverPromptTimer")
 
     m.playback = invalid
     m.preferences = {}
     m.preferenceStore = PlayerPreferenceStore()
     m.controls = []
     m.controlNodes = []
-    m.controlPositions = [72, 322, 572, 822]
-    m.controlSpacing = 250
+    ' Icon row baseline: controlsHost/focusCursor both start at x=900 (see
+    ' applyBottomRailLayout) — icons cluster toward the right of the rail,
+    ' unlike the old wide text-label row which started at the left (x=72).
+    m.controlPositions = [900, 964, 1028, 1092]
+    m.controlSpacing = 64
     m.controlFocusY = 234
+    m.statsOverlayVisible = false
+    m.pendingResumeSeekPosition = 0
     m.focusArea = "controls"
     m.focusIndex = 0
     m.menuOpen = false
@@ -88,6 +99,10 @@ sub init()
     m.seasonCarouselVisibleStart = 0
     m.maxVisibleSeasonCarouselItems = 6
     m.seasonCarouselRequestPending = false
+    m.startOverPromptOpen = false
+    m.startOverPromptIndex = 0
+    m.startOverPromptOptions = []
+    m.startOverPromptOptionNodes = []
 
     m.top.observeField("playback", "onPlaybackChanged")
     m.top.observeField("nextPlayback", "onNextPlaybackChanged")
@@ -106,6 +121,8 @@ sub init()
     m.bufferingDebounceTimer.observeField("fire", "onBufferingDebounceTimer")
     m.seekDebounceTimer.observeField("fire", "onSeekDebounceTimer")
     m.seekSettleTimer.observeField("fire", "onSeekSettleTimer")
+    m.statsOverlayTimer.observeField("fire", "onStatsOverlayTimer")
+    m.startOverPromptTimer.observeField("fire", "onStartOverPromptTimer")
     m.top.setFocus(true)
 end sub
 
@@ -132,6 +149,7 @@ sub onPlaybackChanged(event as Object)
     end if
 
     resetNextEpisodeState()
+    m.pendingResumeSeekPosition = 0
     m.preferences = m.preferenceStore.load(m.playback)
     m.titleLabel.text = playbackTitle()
     m.progressTrack.visible = isLivePlayback() <> true
@@ -153,6 +171,9 @@ sub resetNextEpisodeState()
     m.nextEpisodeRequestReason = ""
     if m.nextEpisodePromptGroup <> invalid then m.nextEpisodePromptGroup.visible = false
     if m.nextEpisodeCountdownTimer <> invalid then m.nextEpisodeCountdownTimer.control = "stop"
+    m.startOverPromptOpen = false
+    if m.startOverPromptGroup <> invalid then m.startOverPromptGroup.visible = false
+    if m.startOverPromptTimer <> invalid then m.startOverPromptTimer.control = "stop"
 end sub
 
 sub onNextPlaybackChanged(event as Object)
@@ -173,11 +194,13 @@ sub onNextPlaybackChanged(event as Object)
         if m.nextEpisodeRequestReason = "finished"
             markCompletedIfSafe()
             exitPlayer()
+        else if m.nextEpisodeRequestReason = "manualNext"
+            setStatusMessage("Следующая серия недоступна", true)
         end if
         return
     end if
 
-    if response.reason = "seasonCarousel"
+    if response.reason = "seasonCarousel" or response.reason = "manualNext"
         startNextPlayback(response.playback)
     else
         showNextEpisodePrompt(response.playback)
@@ -212,7 +235,11 @@ sub startPlayback()
     end if
 
     m.playbackOptions = playbackStreamOptions()
-    m.playbackOptionIndex = 0
+    m.playbackOptionIndex = bestQualityOptionIndex(m.playbackOptions)
+    if m.preferences = invalid then m.preferences = {}
+    bestStream = currentPlaybackStream()
+    m.preferences["qualityId"] = bestStream.id
+    m.preferences["qualityUrl"] = bestStream.url
     applySavedQualityPreference()
     m.savedAudioPreferenceApplied = false
     logPlaybackStart()
@@ -234,8 +261,17 @@ function autoApplySavedAudioPreferenceEnabled() as Boolean
     return true
 end function
 
+' Unlike quality (always the algorithmic best-available pick, never
+' remembered) and unlike the still-disabled shared flag above, subtitle
+' track choice is remembered the same way audio already is — via
+' PlayerPreferenceStore.brs's series+episode key merge, so a track picked on
+' one episode carries to the next episode of the same serial.
+function autoApplySavedSubtitlePreferenceEnabled() as Boolean
+    return true
+end function
+
 function savedPreferredSubtitleTrackNameForPlayback() as String
-    if autoApplySavedPlaybackPreferencesEnabled() <> true then return ""
+    if autoApplySavedSubtitlePreferenceEnabled() <> true then return ""
     return savedPreferredSubtitleTrackName()
 end function
 
@@ -248,21 +284,28 @@ function playbackContentNode(preferredSubtitleTrackName as String) as Object
     subtitleTracks = contentSubtitleTracksForPreferred(preferredSubtitleTrackName)
     if subtitleTracks.Count() > 0 then content.SubtitleTracks = subtitleTracks
     if preferredSubtitleTrackName <> "" then content.SubtitleConfig = { TrackName: preferredSubtitleTrackName }
-    if stream.streamFormat = "hls"
-        content.streamFormat = "hls"
-    else
-        content.streamFormat = "mp4"
-    end if
+    content.streamFormat = "hls"
 
     return content
 end function
 
+' Quality options (which include the real id="auto" entry, when
+' KinoItemService.brs resolved one) are added BEFORE the "default" entry —
+' m.playback.streamUrl is almost always the exact same URL as the "auto"
+' option's, and addPlaybackStreamOption dedupes by URL, so whichever gets
+' added first claims that URL's single surviving option. Adding "default"
+' first (as this used to) meant "auto" always lost that race and never
+' actually appeared in m.playbackOptions, silently breaking
+' bestQualityOptionIndex's "prefer Auto" tier — it never saw an "auto" id to
+' prefer, even though the UI's own qualityMenuItems()/selectedQualityLabel()
+' (built from m.playback.qualityOptions directly, not m.playbackOptions)
+' still showed "Auto" by coincidental URL match. "default" now only adds
+' something when quality options didn't already cover that URL/didn't exist.
 function playbackStreamOptions() as Object
     options = []
     seen = {}
     if m.playback = invalid then return options
 
-    addPlaybackStreamOption(options, seen, "default", "Default", m.playback.streamUrl, m.playback.streamFormat)
     if m.playback.qualityOptions <> invalid
         for each option in m.playback.qualityOptions
             if option <> invalid
@@ -270,21 +313,59 @@ function playbackStreamOptions() as Object
                 if label = "" then label = "Fallback " + StrI(options.Count() + 1).Trim()
                 id = menuItemId(option)
                 if id = "" then id = label
-                streamFormat = "mp4"
+                streamFormat = "hls"
                 if option.streamFormat <> invalid then streamFormat = option.streamFormat
                 addPlaybackStreamOption(options, seen, id, label, option.url, streamFormat)
             end if
         end for
     end if
+    addPlaybackStreamOption(options, seen, "default", "Default", m.playback.streamUrl, m.playback.streamFormat)
 
     return options
+end function
+
+' Picks the highest-priority option to start playback on, instead of always
+' the first ("default") entry. "Auto" (the server-resolved HLS stream,
+' KinoItemService.brs's kinoItemQualityOptions id="auto") is preferred above
+' everything when available; otherwise falls back to KinoItemService.brs's
+' own hlsKeys = ["hls4", "hls2", "hls"] priority (that list itself is
+' untouched; this just makes PlayerScreen actually start on the option that
+' order would prefer, rather than only reaching it via the on-failure
+' fallback path). HTTP/mp4 direct-file streaming is never offered as an
+' option at all (see KinoItemService.brs), so there's no tier for it here.
+' Never remembered as a preference — this always runs, on every playback
+' start.
+function qualityOptionTier(option as Object) as Integer
+    if option.id = "auto" then return 0
+    haystack = LCase(option.id + " " + option.label)
+    if Instr(1, haystack, "hls4") > 0 then return 1
+    if Instr(1, haystack, "hls2") > 0 then return 2
+    return 3
+end function
+
+function bestQualityOptionIndex(options as Object) as Integer
+    if options = invalid or options.Count() = 0 then return 0
+
+    bestIndex = 0
+    bestTier = qualityOptionTier(options[0])
+    for index = 1 to options.Count() - 1
+        tier = qualityOptionTier(options[index])
+        if tier < bestTier
+            bestTier = tier
+            bestIndex = index
+        end if
+    end for
+    return bestIndex
 end function
 
 sub addPlaybackStreamOption(options as Object, seen as Object, id as String, label as String, url as Dynamic, streamFormat as Dynamic)
     if url = invalid or url = "" then return
     if seen.DoesExist(url) then return
 
-    format = "mp4"
+    ' Every upstream caller now supplies "hls" explicitly (KinoItemService.brs
+    ' is HLS-only) — this default only matters if a caller ever omits
+    ' streamFormat, and stays "hls" rather than "mp4"/http to match.
+    format = "hls"
     if streamFormat <> invalid and streamFormat <> "" then format = streamFormat
     options.Push({
         id: id
@@ -341,7 +422,7 @@ function currentPlaybackStream() as Object
         }
     end if
 
-    return { id: "default", label: "Default", url: "", streamFormat: "mp4" }
+    return { id: "default", label: "Default", url: "", streamFormat: "hls" }
 end function
 
 sub logPlaybackStart()
@@ -364,9 +445,16 @@ sub logPlaybackStart()
     print "PlayerScreen: stream format="; streamFormat; " url="; playbackDiagnosticRedactedUrl(streamUrl)
 end sub
 
+' Setting m.videoNode.seek here, before playback has actually started,
+' doesn't reliably take effect — the exact same Roku timing quirk already
+' documented/worked around for audio-track preference (applySavedAudioPreference
+' is deliberately NOT called from this sub, only once state="playing" fires
+' in onVideoStateChanged; see player-audio-selection.sh's explicit check for
+' that). The resume seek now follows the same pattern: stash it and apply it
+' once state actually reaches "playing".
 sub startPlaybackAtPosition(startPosition as Integer)
     m.playbackStarted = false
-    if startPosition > 0 then m.videoNode.seek = startPosition
+    m.pendingResumeSeekPosition = startPosition
     m.top.setFocus(true)
     showStreamLoader("Loading stream")
     m.videoNode.control = "play"
@@ -382,7 +470,7 @@ sub showResumePrompt(startPosition as Integer)
     m.resumePromptOpen = true
     m.resumePromptIndex = 0
     m.resumeCountdownSeconds = 15
-    m.resumePromptMessageLabel.text = "Saved position: " + formatTime(startPosition)
+    m.resumePromptMessageLabel.text = "Продолжить с " + formatTime(startPosition) + "?"
     renderResumePromptOptions()
     updateResumePromptCountdown()
     m.bottomRailGroup.visible = false
@@ -390,28 +478,39 @@ sub showResumePrompt(startPosition as Integer)
     m.resumePromptTimer.control = "start"
 end sub
 
+' index 0 = "Да" (resume from the saved position) is rendered on the RIGHT,
+' index 1 = "Нет" (start over) on the LEFT — matching the reference layout.
+' handleResumePromptKey() maps Left/Right to this same left-to-right visual
+' order (not to raw index order), and the auto-resume countdown
+' (onResumePromptTimer) always lands on index 0/"Да" either way.
 sub renderResumePromptOptions()
     childCount = m.resumePromptOptionsHost.getChildCount()
     if childCount > 0 then m.resumePromptOptionsHost.removeChildrenIndex(childCount, 0)
     m.resumePromptOptionNodes = []
 
-    labels = ["Resume from " + formatTime(m.resumeStartPosition), "Start from beginning"]
+    labels = ["Да", "Нет"]
+    buttonWidth = 140
+    buttonHeight = 48
+    gap = 20
+    xForIndex = [buttonWidth + gap, 0]
+
     for index = 0 to labels.Count() - 1
         group = CreateObject("roSGNode", "Group")
-        group.translation = [0, index * 58]
+        group.translation = [xForIndex[index], 0]
 
         bg = CreateObject("roSGNode", "Rectangle")
-        bg.width = 440
-        bg.height = 46
-        bg.color = "#374151"
-        if index = m.resumePromptIndex then bg.color = "#E5E7EB"
+        bg.width = buttonWidth
+        bg.height = buttonHeight
+        bg.color = "#4B5563"
+        if index = m.resumePromptIndex then bg.color = "#F9FAFB"
         group.appendChild(bg)
 
         label = CreateObject("roSGNode", "Label")
-        label.translation = [18, 12]
-        label.width = 404
+        label.translation = [0, 14]
+        label.width = buttonWidth
+        label.horizAlign = "center"
         label.text = labels[index]
-        label.color = "#D1D5DB"
+        label.color = "#E5E7EB"
         if index = m.resumePromptIndex then label.color = "#111827"
         group.appendChild(label)
 
@@ -873,21 +972,39 @@ function seasonCarouselEpisodeBooleanField(episode as Dynamic, key as String, fa
     return fallback
 end function
 
+' Icon row (was 4 text labels — "Play/Pause", "Audio: X", "Subs: X",
+' "Quality: X" — now 4 icons with no on-screen text; the current selection
+' for audio/subtitles/quality shows as a checkmark inside that control's own
+' panel instead, same as the panel's checkmark already worked before this
+' change). Play/Pause has no icon at all — the remote's dedicated transport
+' key already controls it regardless of OSD focus (isTransportKey/
+' handleTransportKey), matching the reference screenshots showing no
+' explicit play/pause control in the row.
+function controlIconUri(control as String) as String
+    if control = "stats" then return "pkg:/images/ui/icon-settings.png"
+    if control = "subtitles" then return "pkg:/images/ui/icon-subtitles.png"
+    if control = "audio" then return "pkg:/images/ui/icon-audio.png"
+    if control = "quality" then return "pkg:/images/ui/icon-quality.png"
+    return ""
+end function
+
 sub buildControls()
     childCount = m.controlsHost.getChildCount()
     if childCount > 0 then m.controlsHost.removeChildrenIndex(childCount, 0)
-    m.controls = ["playPause", "audio", "subtitles", "quality"]
+    m.controls = ["stats", "subtitles", "audio", "quality"]
     m.controlNodes = []
 
-    labels = controlLabels()
-    for index = 0 to labels.Count() - 1
-        label = CreateObject("roSGNode", "Label")
-        label.text = labels[index]
-        label.translation = [index * m.controlSpacing + 24, 13]
-        label.width = 208
-        label.color = "#F5F5F5"
-        m.controlsHost.appendChild(label)
-        m.controlNodes.Push(label)
+    for index = 0 to m.controls.Count() - 1
+        icon = CreateObject("roSGNode", "Poster")
+        icon.uri = controlIconUri(m.controls[index])
+        icon.width = 28
+        icon.height = 28
+        ' 10px inset centers the 28px icon inside the 48px focus-cursor slot
+        ' (see focusCursor in PlayerScreen.xml) at the same absolute X as
+        ' m.controlPositions[index].
+        icon.translation = [index * m.controlSpacing + 10, 10]
+        m.controlsHost.appendChild(icon)
+        m.controlNodes.Push(icon)
     end for
 
     renderSeasonCarousel()
@@ -936,31 +1053,11 @@ sub applyBottomRailLayout()
     m.progressFocus.translation = [68, progressFocusY]
     m.progressTrack.translation = [72, progressTrackY]
     m.progressFill.translation = [72, progressTrackY]
-    m.controlsHost.translation = [72, controlsY]
+    m.controlsHost.translation = [900, controlsY]
     m.controlFocusY = controlsY
     m.seasonCarouselStatusLabel.translation = [72, statusY]
     m.statusLabel.translation = [72, statusY]
-    m.menuPopover.translation = [720, menuY]
-end sub
-
-function controlLabels() as Object
-    playLabel = "Play"
-    if m.isPlaying then playLabel = "Pause"
-
-    return [playLabel, "Audio: " + selectedAudioLabel(), "Subs: " + selectedSubtitleLabel(), "Quality: " + selectedQualityLabel()]
-end function
-
-sub updateControlLabels()
-    if m.controlNodes = invalid or m.controlNodes.Count() = 0 then return
-
-    labels = controlLabels()
-    for index = 0 to labels.Count() - 1
-        if index < m.controlNodes.Count() then m.controlNodes[index].text = labels[index]
-    end for
-end sub
-
-sub updatePlayPauseControlLabel()
-    updateControlLabels()
+    m.menuPopover.translation = [860, menuY]
 end sub
 
 sub showRail()
@@ -971,11 +1068,21 @@ sub showRail()
 end sub
 
 sub onRailHideTimer()
-    if m.isPlaying and m.menuOpen <> true
-        m.bottomRailGroup.visible = false
-        updateFocusCursor()
-        updateSeasonCarouselChevrons()
-    end if
+    if m.isPlaying and m.menuOpen <> true then hideRail()
+end sub
+
+' Counterpart to showRail() — always resets focusArea back to "controls" so
+' the OSD starts fresh on the icon row the next time it's revealed, however
+' it was hidden (this timer, or Back — see onKeyEvent). Without this, a
+' focusArea left on "progress" (e.g. after seeking with the OSD hidden) or
+' "seasonCarousel" from before the rail hid would still be in effect next
+' time the rail is shown, landing focus somewhere other than the icon row.
+sub hideRail()
+    m.railHideTimer.control = "stop"
+    m.bottomRailGroup.visible = false
+    m.focusArea = "controls"
+    updateFocusCursor()
+    updateSeasonCarouselChevrons()
 end sub
 
 sub updateFocusCursor()
@@ -1049,22 +1156,23 @@ sub onVideoStateChanged(event as Object)
         m.isPlaying = true
         m.playbackStarted = true
         applySavedAudioPreference()
+        if m.pendingResumeSeekPosition > 0
+            m.videoNode.seek = m.pendingResumeSeekPosition
+            m.pendingResumeSeekPosition = 0
+        end if
         if isLivePlayback() <> true then m.progressTimer.control = "start"
-        updatePlayPauseControlLabel()
         showRail()
     else if state = "paused"
         hideStreamLoader()
         m.isPlaying = false
         m.railHideTimer.control = "stop"
         sendProgressUpdate("pause")
-        updatePlayPauseControlLabel()
         showRail()
     else if state = "buffering"
         printVideoPlaybackDiagnostics("buffering")
         startBufferingDebounce()
         m.isPlaying = false
         m.railHideTimer.control = "stop"
-        updatePlayPauseControlLabel()
         showRail()
     else if state = "finished"
         hideStreamLoader()
@@ -1199,6 +1307,90 @@ function playbackDiagnosticRedactedUrl(url as String) as String
     return Left(url, queryPosition - 1) + "?[redacted]"
 end function
 
+' "Stats for nerds" overlay — toggled by OK on the gear/"stats" control,
+' ONLY by that (not by Back — deliberately not part of onKeyEvent's
+' overlay-precedence chain, see the comment there). Reuses the same
+' roVideoNode diagnostic fields printVideoPlaybackDiagnostics already logs
+' to the console instead of re-deriving anything, just renders them
+' on-screen too. Stays visible independent of the OSD rail's own auto-hide
+' timer/Back handling, and is only recomputed while actually visible (see
+' onVideoPositionChanged).
+sub toggleStatsOverlay()
+    m.statsOverlayVisible = not m.statsOverlayVisible
+    if m.statsOverlayVisible
+        updateStatsOverlayText()
+        m.statsOverlayTimer.control = "start"
+    else
+        m.statsOverlayTimer.control = "stop"
+    end if
+    m.statsOverlayGroup.visible = m.statsOverlayVisible
+end sub
+
+' Position-change events aren't a reliable refresh cadence on their own
+' (fields like audioFormat/streamInfo can still read stale/empty for a bit
+' after playback starts, and some Roku firmware only ticks Video.position a
+' few times a second) — a dedicated 2s timer, running only while the
+' overlay is actually visible, guarantees it keeps catching up.
+sub onStatsOverlayTimer()
+    if m.statsOverlayVisible then updateStatsOverlayText()
+end sub
+
+
+function selectedAudioLanguage() as String
+    audioId = m.preferenceStore.stringField(m.preferences, "audioTrackId", "")
+    items = audioMenuItems()
+    for each item in items
+        if menuItemId(item) = audioId then return trackLanguage(item)
+    end for
+    if items.Count() = 1 then return trackLanguage(items[0])
+    return ""
+end function
+
+sub updateStatsOverlayText()
+    if m.videoNode = invalid or m.statsOverlayLinesHost = invalid then return
+
+    ' m.videoNode.audioFormat has been observed staying empty for the whole
+    ' playback session on-device (not just briefly at startup) — fall back
+    ' to the selected track's own label so this always matches what's
+    ' checked in the audio panel instead of showing "unknown" indefinitely.
+    audioFormat = m.videoNode.audioFormat
+    if audioFormat = invalid or audioFormat = "" then audioFormat = selectedAudioLabel()
+
+    languageText = selectedAudioLanguage()
+    if languageText = "" then languageText = "—"
+
+    subLabel = selectedSubtitleLabel()
+    if subLabel = "Off" then subLabel = "OFF"
+
+    lines = []
+    ' selectedQualityLabel() already includes the tier for non-Auto options
+    ' (kinoItemAddQualityUrlOptions appends " hls4"/" hls2"/" hls" to the
+    ' label itself) and just says "Auto" for the Auto option — a separate
+    ' format tag here was redundant either way ("Auto AUTO", "1080p hls4 HLS4").
+    ' No Bitrate line — Video.downloadedSegment/streamingSegment never fire
+    ' at all for this content/device (confirmed: the diagnostic print lines
+    ' in onVideoDownloadedSegmentChanged/onVideoStreamingSegmentChanged never
+    ' appear in the console log), so there's no live figure to show; showing
+    ' a permanently-stuck "measuring..." was worse than not having the line.
+    lines.Push("Video: " + selectedQualityLabel())
+    lines.Push("Audio: " + UCase(audioFormat))
+    lines.Push("Language: " + UCase(languageText))
+    lines.Push("Sub: " + subLabel)
+
+    ' One Label per line (not a single Label with embedded newlines) —
+    ' explicit, unambiguous vertical layout.
+    childCount = m.statsOverlayLinesHost.getChildCount()
+    if childCount > 0 then m.statsOverlayLinesHost.removeChildrenIndex(childCount, 0)
+    for index = 0 to lines.Count() - 1
+        row = CreateObject("roSGNode", "Label")
+        row.translation = [0, index * 28]
+        row.width = 416
+        row.color = "#F5F5F5"
+        row.text = lines[index]
+        m.statsOverlayLinesHost.appendChild(row)
+    end for
+end sub
+
 sub showStreamLoader(title as String)
     if m.streamLoaderGroup = invalid then return
     if title <> "Buffering" and m.bufferingDebounceTimer <> invalid then m.bufferingDebounceTimer.control = "stop"
@@ -1312,16 +1504,15 @@ sub onVideoPositionChanged()
     updateSeekSettle()
     updateProgressVisuals()
     maybeRequestNextEpisodePrompt("threshold")
+    if m.statsOverlayVisible then updateStatsOverlayText()
 end sub
 
 sub onAvailableAudioTracksChanged()
     if m.playbackStarted = true then applySavedAudioPreference()
-    updateControlLabels()
 end sub
 
 sub onAvailableSubtitleTracksChanged()
-    if autoApplySavedPlaybackPreferencesEnabled() then applySavedSubtitlePreference()
-    updateControlLabels()
+    if autoApplySavedSubtitlePreferenceEnabled() then applySavedSubtitlePreference()
 end sub
 
 sub onProgressTimer()
@@ -1416,15 +1607,49 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
 
     if m.resumePromptOpen then return handleResumePromptKey(key)
     if m.nextEpisodePromptOpen then return handleNextEpisodePromptKey(key)
+    if m.startOverPromptOpen then return handleStartOverPromptKey(key)
     if m.menuOpen then return handleMenuKey(key)
 
+    ' The stats overlay is deliberately NOT in this precedence chain — it's
+    ' independent of the OSD/Back stack entirely. It only ever toggles via
+    ' OK on the gear control (activateFocusedControl/toggleStatsOverlay);
+    ' Back behaves exactly as if it weren't showing at all, and it stays
+    ' visible across the OSD hiding/reappearing.
+
+    ' Back dismisses the OSD first (same "closes the current overlay before
+    ' the player exits" precedence as the resumePrompt/nextEpisodePrompt/
+    ' menu checks above) — only exits the player on a second Back once the
+    ' rail is already hidden.
     if key = "back"
+        if m.bottomRailGroup.visible = true
+            hideRail()
+            return true
+        end if
         sendProgressUpdate("exit")
         exitPlayer()
         return true
     end if
 
     if m.bottomRailGroup.visible <> true
+        ' Left/Right jump straight into seek mode (focusArea "progress") and
+        ' seek immediately, same as the remote's dedicated rewind/fastforward
+        ' keys (isTransportKey below) — landing on "progress" rather than
+        ' "controls" means a second Left/Right keeps seeking (handleProgressKey)
+        ' instead of moving icon focus. Previously these just revealed the
+        ' rail without seeking at all.
+        if key = "left" or key = "right"
+            if isLivePlayback() <> true then m.focusArea = "progress"
+            showRail()
+            if key = "left" then seekBy(0 - m.seekStepSeconds) else seekBy(m.seekStepSeconds)
+            return true
+        end if
+        ' Down (OSD hidden) → "Сначала"/"Следующая серия" — a manually
+        ' invoked alternative to opening the OSD and navigating the season
+        ' carousel; doesn't apply to live playback.
+        if key = "down" and isLivePlayback() <> true
+            showStartOverPrompt()
+            return true
+        end if
         showRail()
         if isTransportKey(key) then return handleTransportKey(key)
         return true
@@ -1468,12 +1693,14 @@ function handleResumePromptKey(key as String) as Boolean
         m.resumePromptGroup.visible = false
         exitPlayer()
         return true
-    else if key = "left" or key = "up"
-        if m.resumePromptIndex > 0 then m.resumePromptIndex = m.resumePromptIndex - 1
+    else if key = "left"
+        ' "Нет" (index 1) renders on the left — Left moves focus toward it.
+        if m.resumePromptIndex < 1 then m.resumePromptIndex = m.resumePromptIndex + 1
         renderResumePromptOptions()
         return true
-    else if key = "right" or key = "down"
-        if m.resumePromptIndex < 1 then m.resumePromptIndex = m.resumePromptIndex + 1
+    else if key = "right"
+        ' "Да" (index 0) renders on the right — Right moves focus toward it.
+        if m.resumePromptIndex > 0 then m.resumePromptIndex = m.resumePromptIndex - 1
         renderResumePromptOptions()
         return true
     else if key = "OK" or key = "play"
@@ -1500,9 +1727,140 @@ end sub
 
 sub restartPlaybackFromBeginning()
     m.videoNode.control = "stop"
+    ' A fresh ContentNode resets Roku's own audio-track selection back to the
+    ' stream's default — re-arm applySavedAudioPreference's one-shot guard
+    ' (m.savedAudioPreferenceApplied, only ever reset in startPlayback()
+    ' otherwise) so the user's saved track actually gets reapplied once this
+    ' new content starts playing, instead of silently no-opping.
+    m.savedAudioPreferenceApplied = false
     m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackNameForPlayback())
     m.videoNode.seek = 0
     startPlaybackAtPosition(0)
+end sub
+
+' "Сначала" / "Следующая серия" — reachable only via Down while the OSD is
+' hidden (see onKeyEvent's "rail hidden" branch). Deliberately a separate
+' overlay from nextEpisodePromptGroup above: that one is auto-triggered near
+' the end of an episode and offers "keep watching / play next now"; this one
+' is manually invoked at any point and offers "restart this episode / jump
+' to the next one". Same "closes on Back, same on a short auto-dismiss
+' timeout" pattern as the other prompts, but the timeout here cancels
+' (no action) rather than auto-choosing an option like the resume prompt's
+' countdown does.
+sub showStartOverPrompt()
+    m.startOverPromptOptions = [{ id: "restart", label: "Сначала" }]
+    if canAskForNextEpisode() then m.startOverPromptOptions.Push({ id: "next", label: "Следующая серия" })
+
+    m.startOverPromptOpen = true
+    m.startOverPromptIndex = 0
+    renderStartOverPromptOptions()
+    m.startOverPromptGroup.visible = true
+    m.startOverPromptTimer.control = "start"
+end sub
+
+sub renderStartOverPromptOptions()
+    childCount = m.startOverPromptOptionsHost.getChildCount()
+    if childCount > 0 then m.startOverPromptOptionsHost.removeChildrenIndex(childCount, 0)
+    m.startOverPromptOptionNodes = []
+
+    count = m.startOverPromptOptions.Count()
+    buttonWidth = 165
+    buttonHeight = 48
+    gap = 20
+    totalWidth = (buttonWidth * count) + (gap * (count - 1))
+    startX = Int((340 - totalWidth) / 2)
+
+    for index = 0 to count - 1
+        option = m.startOverPromptOptions[index]
+        group = CreateObject("roSGNode", "Group")
+        group.translation = [startX + (index * (buttonWidth + gap)), 0]
+
+        bg = CreateObject("roSGNode", "Rectangle")
+        bg.width = buttonWidth
+        bg.height = buttonHeight
+        bg.color = "#4B5563"
+        if index = m.startOverPromptIndex then bg.color = "#F9FAFB"
+        group.appendChild(bg)
+
+        label = CreateObject("roSGNode", "Label")
+        label.translation = [0, 14]
+        label.width = buttonWidth
+        label.horizAlign = "center"
+        label.text = option.label
+        label.color = "#E5E7EB"
+        if index = m.startOverPromptIndex then label.color = "#111827"
+        group.appendChild(label)
+
+        m.startOverPromptOptionsHost.appendChild(group)
+        m.startOverPromptOptionNodes.Push(group)
+    end for
+end sub
+
+function handleStartOverPromptKey(key as String) as Boolean
+    if key = "back"
+        closeStartOverPrompt()
+        return true
+    else if key = "left"
+        if m.startOverPromptIndex > 0 then m.startOverPromptIndex = m.startOverPromptIndex - 1
+        renderStartOverPromptOptions()
+        return true
+    else if key = "right"
+        if m.startOverPromptIndex < m.startOverPromptOptions.Count() - 1 then m.startOverPromptIndex = m.startOverPromptIndex + 1
+        renderStartOverPromptOptions()
+        return true
+    else if key = "OK" or key = "play"
+        chooseStartOverPromptOption(m.startOverPromptIndex)
+        return true
+    end if
+
+    return true
+end function
+
+sub closeStartOverPrompt()
+    m.startOverPromptTimer.control = "stop"
+    m.startOverPromptOpen = false
+    m.startOverPromptGroup.visible = false
+end sub
+
+sub onStartOverPromptTimer()
+    if m.startOverPromptOpen then closeStartOverPrompt()
+end sub
+
+sub chooseStartOverPromptOption(index as Integer)
+    if index < 0 or index >= m.startOverPromptOptions.Count() then return
+    optionId = m.startOverPromptOptions[index].id
+    closeStartOverPrompt()
+
+    if optionId = "restart"
+        restartPlaybackFromBeginning()
+    else if optionId = "next"
+        requestManualNextEpisode()
+    end if
+end sub
+
+' Same request/response plumbing maybeRequestNextEpisodePrompt uses
+' (m.top.nextPlaybackRequested, resolved by VideoDetailScreen via AppScene),
+' just with its own reason so onNextPlaybackChanged can switch immediately
+' instead of showing another confirmation — the user already explicitly
+' chose "next episode" from this dialog, unlike the threshold/finished
+' reasons which still ask first.
+sub requestManualNextEpisode()
+    if canAskForNextEpisode() <> true then return
+    if m.nextEpisodeRequestPending = true
+        setStatusMessage("Пожалуйста, подождите...", true)
+        return
+    end if
+
+    m.nextEpisodeRequestPending = true
+    m.nextEpisodeRequestReason = "manualNext"
+    m.top.nextPlaybackRequested = {
+        itemId: playbackIntegerField("itemId", 0)
+        mediaId: playbackIntegerField("mediaId", 0)
+        seasonNumber: playbackIntegerField("seasonNumber", 0)
+        episodeNumber: playbackIntegerField("episodeNumber", 0)
+        videoNumber: playbackIntegerField("videoNumber", 0)
+        reason: "manualNext"
+    }
 end sub
 
 function isTransportKey(key as String) as Boolean
@@ -1685,8 +2043,8 @@ end sub
 
 sub activateFocusedControl()
     control = m.controls[m.focusIndex]
-    if control = "playPause"
-        togglePlayPause()
+    if control = "stats"
+        toggleStatsOverlay()
     else if control = "audio"
         openMenu("audio")
     else if control = "subtitles"
@@ -1735,18 +2093,37 @@ sub renderMenuItems()
     lastVisibleIndex = m.menuScrollStart + m.maxVisibleMenuItems - 1
     if lastVisibleIndex >= m.menuItems.Count() then lastVisibleIndex = m.menuItems.Count() - 1
 
+    ' Each row is a Group so the focused (cursor) row can get its own
+    ' highlight bar behind it — distinct from the "✓" prefix, which marks
+    ' the currently SAVED/applied selection, not where the cursor is.
     for index = m.menuScrollStart to lastVisibleIndex
         item = m.menuItems[index]
-        row = CreateObject("roSGNode", "Label")
         visibleIndex = index - m.menuScrollStart
-        row.translation = [0, visibleIndex * 32]
-        row.width = 384
-        row.color = "#D1D5DB"
-        if index = m.menuIndex then row.color = "#F5F5F5"
-        prefix = "   "
-        if isSelectedMenuItem(item) then prefix = "* "
-        row.text = prefix + item.label
-        m.menuItemsHost.appendChild(row)
+        isFocused = index = m.menuIndex
+
+        rowGroup = CreateObject("roSGNode", "Group")
+        rowGroup.translation = [0, visibleIndex * 34]
+
+        if isFocused
+            highlight = CreateObject("roSGNode", "Rectangle")
+            highlight.translation = [-10, -3]
+            highlight.width = 396
+            highlight.height = 30
+            highlight.color = "#F9FAFB"
+            highlight.opacity = 0.22
+            rowGroup.appendChild(highlight)
+        end if
+
+        label = CreateObject("roSGNode", "Label")
+        label.width = 380
+        label.color = "#E5E7EB"
+        if isFocused then label.color = "#F9FAFB"
+        prefix = "    "
+        if isSelectedMenuItem(item) then prefix = "✓  "
+        label.text = prefix + item.label
+        rowGroup.appendChild(label)
+
+        m.menuItemsHost.appendChild(rowGroup)
     end for
 end sub
 
@@ -1764,11 +2141,11 @@ sub ensureMenuSelectionVisible()
 end sub
 
 sub updateMenuTitle()
-    title = "Quality"
+    title = "КАЧЕСТВО"
     if m.menuType = "audio"
-        title = "Audio"
+        title = "АУДИОДОРОЖКА"
     else if m.menuType = "subtitles"
-        title = "Subtitles"
+        title = "СУБТИТРЫ"
     end if
 
     if m.menuItems <> invalid and m.menuItems.Count() > 0
@@ -1862,20 +2239,47 @@ function audioMenuItems() as Object
     return items
 end function
 
+' Roku's own availableAudioTracks entries (Language/Name/Track) carry no
+' codec field at all — codec info only exists in KinoPub's own metadata
+' (m.playback.audioTracks, already AC3-filtered by kinoItemTrackOptions).
+' Cross-reference by label so an AC3 track dropped there doesn't resurface
+' here once Roku reports its own track list mid-playback: only tracks whose
+' label matches a surviving (non-AC3) KinoPub track are offered, unless
+' KinoPub's list isn't available at all, in which case nothing is filtered
+' rather than risk hiding every track.
+function audioMenuAllowedLabels() as Dynamic
+    if m.playback = invalid or m.playback.audioTracks = invalid or m.playback.audioTracks.Count() = 0 then return invalid
+
+    allowed = {}
+    for each track in m.playback.audioTracks
+        allowed[LCase(trackLabel(track))] = true
+    end for
+    return allowed
+end function
+
 function availableAudioMenuItems() as Object
     items = []
     if hasAvailableAudioTracks() <> true then return items
 
+    allowedLabels = audioMenuAllowedLabels()
     seen = {}
     for each track in m.videoNode.availableAudioTracks
         label = trackLabel(track)
         if label = "" then label = "Audio " + StrI(items.Count() + 1).Trim()
-        appendUniqueTrackMenuItem(items, seen, {
-            id: trackIdentifier(track)
-            label: label
-            language: trackLanguage(track)
-            Track: trackIdentifier(track)
-        })
+
+        ' Defense in depth: also drop anything whose own label text mentions
+        ' AC3, regardless of the KinoPub cross-reference below.
+        isAc3 = Instr(1, LCase(label), "ac3") > 0 or Instr(1, LCase(label), "ac-3") > 0
+        isAllowed = allowedLabels = invalid or allowedLabels.DoesExist(LCase(label))
+
+        if not isAc3 and isAllowed
+            appendUniqueTrackMenuItem(items, seen, {
+                id: trackIdentifier(track)
+                label: label
+                language: trackLanguage(track)
+                Track: trackIdentifier(track)
+            })
+        end if
     end for
 
     return items
@@ -2091,7 +2495,6 @@ sub applyAudioSelection(track as Object)
     m.preferenceStore.save(m.playback, m.preferences)
     m.savedAudioPreferenceApplied = audioSelectionApplied
 
-    updateControlLabels()
     setStatusMessage("Audio: " + selectedAudioLabel(), true)
     sendProgressUpdate("audio")
 end sub
@@ -2109,7 +2512,6 @@ sub applySubtitleSelection(track as Object)
             m.videoNode.globalCaptionMode = "Off"
             m.videoNode.subtitleTrack = ""
         end if
-        updateControlLabels()
         setStatusMessage("Subtitles: Off", true)
         sendProgressUpdate("subtitles")
         return
@@ -2134,7 +2536,6 @@ sub applySubtitleSelection(track as Object)
         end if
     end if
 
-    updateControlLabels()
     setStatusMessage("Subtitles: " + selectedSubtitleLabel(), true)
     sendProgressUpdate("subtitles")
 end sub
@@ -2145,6 +2546,11 @@ sub reloadPlaybackWithSubtitle(trackName as String)
     position = currentPositionSeconds()
     wasPlaying = m.isPlaying
     m.videoNode.control = "stop"
+    ' Re-arm applySavedAudioPreference's one-shot guard — a fresh ContentNode
+    ' resets Roku's own audio-track selection, so without this the reload
+    ' would silently drop the user's saved audio track (see
+    ' restartPlaybackFromBeginning's identical comment).
+    m.savedAudioPreferenceApplied = false
     m.videoNode.content = playbackContentNode(trackName)
     if position > 0 then m.videoNode.seek = position
     if wasPlaying
@@ -2173,7 +2579,6 @@ sub applyQualitySelection(option as Object)
     m.preferences["qualityStreamFormat"] = stream.streamFormat
     m.preferenceStore.save(m.playback, m.preferences)
 
-    updateControlLabels()
     setStatusMessage("Quality: " + selectedQualityLabel(), true)
     if previousIndex <> selectedIndex then reloadPlaybackWithQuality(option)
     sendProgressUpdate("quality")
@@ -2202,6 +2607,9 @@ sub reloadPlaybackWithQuality(option as Object)
     wasPlaying = m.isPlaying
     clearPendingSeek()
     m.videoNode.control = "stop"
+    ' Re-arm applySavedAudioPreference's one-shot guard — see
+    ' restartPlaybackFromBeginning's identical comment.
+    m.savedAudioPreferenceApplied = false
     m.videoNode.content = playbackContentNode(savedPreferredSubtitleTrackNameForPlayback())
     if position > 0 then m.videoNode.seek = position
     if wasPlaying
@@ -2230,7 +2638,6 @@ sub applySavedAudioPreference()
     print "PlayerScreen: applying saved audio track="; trackId; " label="; trackLabel(track)
     m.videoNode.audioTrack = trackId
     m.savedAudioPreferenceApplied = true
-    updateControlLabels()
 end sub
 
 function hasAvailableAudioTracks() as Boolean
@@ -2294,7 +2701,7 @@ function savedPreferredSubtitleTrackName() as String
 end function
 
 sub applySavedSubtitlePreference()
-    if autoApplySavedPlaybackPreferencesEnabled() <> true then return
+    if autoApplySavedSubtitlePreferenceEnabled() <> true then return
     trackName = savedPreferredSubtitleTrackName()
     if trackName = "" then return
     if m.videoNode = invalid then return
@@ -2342,6 +2749,7 @@ sub exitPlayer()
     m.nextEpisodeCountdownTimer.control = "stop"
     m.bufferingDebounceTimer.control = "stop"
     m.seekDebounceTimer.control = "stop"
+    m.statsOverlayTimer.control = "stop"
     clearPendingSeek()
     m.videoNode.control = "stop"
     m.top.exitRequested = true

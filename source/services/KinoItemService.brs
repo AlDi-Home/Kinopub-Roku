@@ -364,6 +364,9 @@ function kinoItemMergeMediaLinkFields(media as Object, body as Dynamic) as Objec
     return merged
 end function
 
+' HLS-only by product decision — a direct mp4/"http" file is never returned
+' here even when that's the only stream the API offers for this media; see
+' kinoItemStreamFromUrlContainer's matching hlsKeys list.
 function kinoItemMediaStream(media as Dynamic) as Object
     if media = invalid or type(media) <> "roAssociativeArray" then return { url: "", format: "" }
 
@@ -373,51 +376,35 @@ function kinoItemMediaStream(media as Dynamic) as Object
             hls = m.stringField(files, "hls", "")
             if hls <> "" then return { url: hls, format: "hls" }
 
-            mp4 = m.stringField(files, "mp4", "")
-            if mp4 <> "" then return { url: mp4, format: "mp4" }
-
-            url = m.stringField(files, "url", "")
-            if url <> "" then return { url: url, format: "mp4" }
-
             hlsFallback = ""
-            mp4Fallback = ""
             for each key in files
                 candidate = files[key]
                 if type(candidate) = "String" or type(candidate) = "roString"
                     if Instr(1, candidate, ".m3u8") > 0 then hlsFallback = candidate
-                    if mp4Fallback = "" and Instr(1, candidate, "http") = 1 then mp4Fallback = candidate
                 end if
             end for
             if hlsFallback <> "" then return { url: hlsFallback, format: "hls" }
-            if mp4Fallback <> "" then return { url: mp4Fallback, format: "mp4" }
         else if type(files) = "roArray"
             hlsFallback = ""
-            mp4Fallback = ""
             for each file in files
                 if file <> invalid and type(file) = "roAssociativeArray"
                     urlStream = { url: "", format: "" }
                     if file.DoesExist("urls") and file.urls <> invalid then urlStream = m.streamFromUrlContainer(file.urls)
                     if urlStream.url = "" and file.DoesExist("url") and file.url <> invalid then urlStream = m.streamFromUrlContainer(file.url)
                     if urlStream.url = "" then urlStream = { url: m.stringField(file, "url", ""), format: m.stringField(file, "format", "") }
-                    if urlStream.url <> ""
-                        if urlStream.format = "hls" or Instr(1, urlStream.url, ".m3u8") > 0 then hlsFallback = urlStream.url
-                        if mp4Fallback = "" and Instr(1, urlStream.url, "http") = 1 then mp4Fallback = urlStream.url
+                    if urlStream.url <> "" and (urlStream.format = "hls" or Instr(1, urlStream.url, ".m3u8") > 0)
+                        hlsFallback = urlStream.url
                     end if
                 else if type(file) = "String" or type(file) = "roString"
                     if Instr(1, file, ".m3u8") > 0 then hlsFallback = file
-                    if mp4Fallback = "" and Instr(1, file, "http") = 1 then mp4Fallback = file
                 end if
             end for
             if hlsFallback <> "" then return { url: hlsFallback, format: "hls" }
-            if mp4Fallback <> "" then return { url: mp4Fallback, format: "mp4" }
         end if
     end if
 
     directHls = m.stringField(media, "hls", "")
     if directHls <> "" then return { url: directHls, format: "hls" }
-
-    directUrl = m.stringField(media, "url", "")
-    if directUrl <> "" then return { url: directUrl, format: "mp4" }
 
     return { url: "", format: "" }
 end function
@@ -428,27 +415,21 @@ function kinoItemStreamFromUrlContainer(container as Dynamic) as Object
     containerType = type(container)
     if containerType = "String" or containerType = "roString"
         if Instr(1, container, ".m3u8") > 0 then return { url: container, format: "hls" }
-        if Instr(1, container, "http") = 1 then return { url: container, format: "mp4" }
         return { url: "", format: "" }
     end if
 
     if containerType <> "roAssociativeArray" then return { url: "", format: "" }
 
-    hlsKeys = ["hls4", "hls2", "http", "hls"]
+    ' "http" (direct mp4 file) deliberately excluded — HLS-only per product
+    ' decision, so this never returns/offers a direct-file stream.
+    hlsKeys = ["hls4", "hls2", "hls"]
     for each key in hlsKeys
         url = m.stringField(container, key, "")
-        if url <> ""
-            format = "hls"
-            if key = "http" then format = "mp4"
-            return { url: url, format: format }
-        end if
+        if url <> "" then return { url: url, format: "hls" }
     end for
 
     directUrl = m.stringField(container, "url", "")
-    if directUrl <> ""
-        if Instr(1, directUrl, ".m3u8") > 0 then return { url: directUrl, format: "hls" }
-        return { url: directUrl, format: "mp4" }
-    end if
+    if directUrl <> "" and Instr(1, directUrl, ".m3u8") > 0 then return { url: directUrl, format: "hls" }
 
     return { url: "", format: "" }
 end function
@@ -535,20 +516,19 @@ end function
 sub kinoItemAddQualityUrlOptions(options as Object, seen as Object, baseLabel as String, urls as Dynamic)
     if urls = invalid or type(urls) <> "roAssociativeArray" then return
 
-    for each key in ["hls4", "hls2", "http", "hls"]
+    ' "http" (direct mp4 file) deliberately excluded — HLS-only.
+    for each key in ["hls4", "hls2", "hls"]
         url = m.stringField(urls, key, "")
         if url <> "" and not seen.DoesExist(url)
-            format = "mp4"
-            if key <> "http" then format = "hls"
             label = baseLabel
             if label = "" then label = m.sourceFileLabel(key, url)
-            if key <> "http" then label = label + " " + key
+            label = label + " " + key
             options.Push({
                 id: label + "-" + key
                 label: label
                 url: url
-                streamFormat: format
-                isAuto: format = "hls"
+                streamFormat: "hls"
+                isAuto: true
             })
             seen[url] = true
         end if
@@ -581,14 +561,22 @@ function kinoItemTrackOptions(media as Dynamic) as Object
         for index = 0 to sourceAudio.Count() - 1
             track = sourceAudio[index]
             if track <> invalid and type(track) = "roAssociativeArray"
-                label = m.stringField(track, "title", "")
-                if label = "" then label = m.stringField(track, "lang", "")
-                if label = "" then label = "Audio " + StrI(index + 1).Trim()
-                audio.Push({
-                    id: m.stringField(track, "id", label)
-                    label: label
-                    language: m.stringField(track, "lang", "")
-                })
+                ' Roku doesn't support AC3/E-AC3 decode on most models — drop
+                ' these tracks entirely rather than offer a pick that won't
+                ' actually play audio. kinoapi.com's audio track schema
+                ' exposes a dedicated "codec" field (e.g. "aac"/"ac3") ; the
+                ' substring match also catches "eac3"/"ac-3" spellings.
+                codec = LCase(m.stringField(track, "codec", ""))
+                if Instr(1, codec, "ac3") = 0
+                    label = m.stringField(track, "title", "")
+                    if label = "" then label = m.stringField(track, "lang", "")
+                    if label = "" then label = "Audio " + StrI(index + 1).Trim()
+                    audio.Push({
+                        id: m.stringField(track, "id", label)
+                        label: label
+                        language: m.stringField(track, "lang", "")
+                    })
+                end if
             end if
         end for
 

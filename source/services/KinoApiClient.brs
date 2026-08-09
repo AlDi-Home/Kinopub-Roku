@@ -50,7 +50,9 @@ function kinoApiGet(path as String, queryParams as Object, timeoutMs = invalid a
     json = invalid
     looksJson = kinoApiLooksLikeJson(body)
     if looksJson then json = ParseJson(body)
-    print "KinoApiClient: response path="; path; " status="; status; " body="; kinoApiBodySnippet(body)
+    #if DEV_BUILD
+    print "KinoApiClient: response path="; path; " status="; status; " body="; kinoApiBodySnippet(path, body)
+    #end if
 
     if looksJson and json = invalid
         return { ok: false, status: status, error: "invalid_response", message: "KinoAPI returned malformed JSON.", rawBody: body }
@@ -99,7 +101,9 @@ function kinoApiPost(path as String, queryParams as Object, bodyParams as Object
     json = invalid
     looksJson = kinoApiLooksLikeJson(body)
     if looksJson then json = ParseJson(body)
-    print "KinoApiClient: response path="; path; " status="; status; " body="; kinoApiBodySnippet(body)
+    #if DEV_BUILD
+    print "KinoApiClient: response path="; path; " status="; status; " body="; kinoApiBodySnippet(path, body)
+    #end if
 
     if looksJson and json = invalid
         return { ok: false, status: status, error: "invalid_response", message: "KinoAPI returned malformed JSON.", rawBody: body }
@@ -152,8 +156,11 @@ function kinoApiLooksLikeJson(body as Dynamic) as Boolean
     return firstChar = "{" or firstChar = "["
 end function
 
-function kinoApiBodySnippet(body as Dynamic) as String
+' OAuth token-exchange bodies carry access/refresh tokens — never let them
+' reach the device log, even in dev builds.
+function kinoApiBodySnippet(path as String, body as Dynamic) as String
     if body = invalid then return ""
+    if Left(path, 8) = "/oauth2/" then return "[redacted]"
     compact = body.Replace(Chr(10), " ").Replace(Chr(13), " ")
     return Left(compact, 180)
 end function

@@ -19,12 +19,16 @@
       <Rectangle id="streamLoaderFill" translation="[500,396]" width="0" height="6" color="#EF4444" />
     </Group>
 
-    <Group id="resumePromptGroup" translation="[390,214]" visible="false">
-      <Rectangle width="500" height="292" color="#111827" opacity="0.96" />
-      <Label id="resumePromptTitleLabel" translation="[30,28]" width="440" text="Continue watching?" color="#F5F5F5" />
-      <Label id="resumePromptMessageLabel" translation="[30,74]" width="440" color="#D1D5DB" />
-      <Group id="resumePromptOptionsHost" translation="[30,126]" />
-      <Label id="resumePromptCountdownLabel" translation="[30,246]" width="440" horizAlign="center" color="#9CA3AF" />
+    <Group id="resumePromptGroup" translation="[460,264]" visible="false">
+      <Rectangle width="360" height="192" color="#6B7280" opacity="0.94" />
+      <Label id="resumePromptMessageLabel" translation="[0,30]" width="360" horizAlign="center" color="#F9FAFB" />
+      <Group id="resumePromptOptionsHost" translation="[30,86]" />
+      <Label id="resumePromptCountdownLabel" translation="[0,158]" width="360" horizAlign="center" color="#E5E7EB" />
+    </Group>
+
+    <Group id="startOverPromptGroup" translation="[440,264]" visible="false">
+      <Rectangle width="400" height="120" color="#6B7280" opacity="0.94" />
+      <Group id="startOverPromptOptionsHost" translation="[30,36]" />
     </Group>
 
     <Group id="bottomRailGroup" translation="[0,400]" visible="false">
@@ -40,21 +44,26 @@
       <Rectangle id="progressFocus" translation="[68,196]" width="1144" height="22" color="#F5F5F5" opacity="0.18" visible="false" />
       <Rectangle id="progressTrack" translation="[72,204]" width="1136" height="6" color="#4B5563" />
       <Rectangle id="progressFill" translation="[72,204]" width="0" height="6" color="#EF4444" />
-      <Group id="controlsHost" translation="[72,234]" />
-      <Group id="focusCursor" translation="[72,234]" visible="false">
-        <Rectangle width="232" height="48" color="#E5E7EB" opacity="0.22" />
-        <Rectangle width="232" height="4" color="#F5F5F5" />
-        <Rectangle translation="[0,44]" width="232" height="4" color="#F5F5F5" />
-        <Rectangle width="4" height="48" color="#F5F5F5" />
-        <Rectangle translation="[228,0]" width="4" height="48" color="#F5F5F5" />
+      <Group id="controlsHost" translation="[900,234]" />
+      <Group id="focusCursor" translation="[900,234]" visible="false">
+        <Rectangle width="48" height="48" color="#E5E7EB" opacity="0.22" />
+        <Rectangle width="48" height="3" color="#F5F5F5" />
+        <Rectangle translation="[0,45]" width="48" height="3" color="#F5F5F5" />
+        <Rectangle width="3" height="48" color="#F5F5F5" />
+        <Rectangle translation="[45,0]" width="3" height="48" color="#F5F5F5" />
       </Group>
-      <Group id="menuPopover" translation="[720,-238]" visible="false">
-        <Rectangle id="menuBackground" width="420" height="264" color="#111827" opacity="0.96" />
-        <Label id="menuTitleLabel" translation="[18,14]" width="384" color="#D1D5DB" />
-        <Group id="menuItemsHost" translation="[18,48]" />
+      <Group id="menuPopover" translation="[860,-238]" visible="false">
+        <Rectangle id="menuBackground" width="420" height="280" color="#111827" opacity="0.97" />
+        <Label id="menuTitleLabel" translation="[20,14]" width="380" color="#F9FAFB" />
+        <Group id="menuItemsHost" translation="[20,50]" />
       </Group>
       <Label id="seasonCarouselStatusLabel" translation="[72,286]" width="700" color="#9CA3AF" visible="false" />
       <Label id="statusLabel" translation="[72,286]" width="700" color="#9CA3AF" />
+    </Group>
+
+    <Group id="statsOverlayGroup" translation="[24,20]" visible="false">
+      <Rectangle width="440" height="140" color="#000000" opacity="0.55" />
+      <Group id="statsOverlayLinesHost" translation="[12,10]" />
     </Group>
 
     <Group id="nextEpisodePromptGroup" translation="[390,214]" visible="false">
@@ -73,6 +82,8 @@
     <Timer id="bufferingDebounceTimer" repeat="false" duration="1.2" />
     <Timer id="seekDebounceTimer" repeat="false" duration="0.45" />
     <Timer id="seekSettleTimer" repeat="false" duration="2.5" />
+    <Timer id="statsOverlayTimer" repeat="true" duration="2" />
+    <Timer id="startOverPromptTimer" repeat="false" duration="4.5" />
   </children>
   <script type="text/brightscript" uri="pkg:/source/services/PlayerPreferenceStore.brs" />
   <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />

@@ -1,8 +1,8 @@
 title=KinoPub
 subtitle=KinoPub
 major_version=0
-minor_version=5
-build_version=00003
+minor_version=7
+build_version=00000
 mm_icon_focus_hd=pkg:/images/channel-icon_hd.png
 mm_icon_focus_fhd=pkg:/images/channel-icon_fhd.png
 ui_resolutions=hd

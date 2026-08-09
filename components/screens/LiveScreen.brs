@@ -21,11 +21,7 @@ sub init()
     m.gridCardWidth = 170
     m.gridCardGapX = 22
     m.gridCardGapY = 26
-    m.gridRowStep = 0
-    m.gridContentOffsetY = 0
     m.gridViewportHeight = 596
-    m.gridScrollAnimation = invalid
-    m.gridScrollInterpolator = invalid
 
     ' Same clipping-padding trick as ContinueScreen.brs/BrowseScreen.brs.
     m.gridPad = 44
@@ -35,6 +31,28 @@ sub init()
     m.gridHost.translation = [gridBaseX - m.gridPad, gridBaseY - m.gridPad]
     m.gridHost.clippingRect = [0, 0, contentWidth + (m.gridPad * 2), m.gridViewportHeight + (m.gridPad * 2)]
     m.gridContent.translation = [m.gridPad, m.gridPad]
+    ' Single fixed geometry for this screen's whole lifetime — see
+    ' components/grid/VideoGrid.brs. Previously this screen rendered its
+    ' whole (unpaginated, potentially large) channel list as one card node
+    ' per item with no cap at all; the pool bounds node/texture count to the
+    ' visible viewport regardless of list length.
+    m.gridPool = VideoGridPool({
+        scriptRoot: m.top
+        content: m.gridContent
+        columns: m.gridColumns
+        cardWidth: m.gridCardWidth
+        cardGapX: m.gridCardGapX
+        cardGapY: m.gridCardGapY
+        viewportHeight: m.gridViewportHeight
+        pad: m.gridPad
+    })
+    m.gridEmptyLabel = CreateObject("roSGNode", "Label")
+    m.gridEmptyLabel.text = "Нет доступных трансляций"
+    m.gridEmptyLabel.width = 700
+    m.gridEmptyLabel.height = 40
+    m.gridEmptyLabel.color = UiThemeLight().muted
+    m.gridEmptyLabel.visible = false
+    m.gridContent.appendChild(m.gridEmptyLabel)
 
     m.pillNav.tabs = [
         { id: "search", label: "Поиск" }
@@ -52,7 +70,6 @@ sub init()
 
     m.focusArea = "grid"
     m.gridItems = []
-    m.gridCardNodes = []
     m.selectedGridIndex = 0
 
     m.top.setFocus(true)
@@ -99,110 +116,15 @@ function liveScreenHandleAuthRequired(response as Dynamic) as Boolean
 end function
 
 sub liveScreenRenderGrid()
-    childCount = m.gridContent.getChildCount()
-    if childCount > 0 then m.gridContent.removeChildrenIndex(childCount, 0)
-    m.gridCardNodes = []
-    m.gridContentOffsetY = 0
-    m.gridContent.translation = [m.gridPad, m.gridPad]
-
-    if m.gridItems.Count() = 0
-        empty = CreateObject("roSGNode", "Label")
-        empty.text = "Нет доступных трансляций"
-        empty.width = 700
-        empty.height = 40
-        empty.color = UiThemeLight().muted
-        m.gridContent.appendChild(empty)
-        m.gridRowStep = 0
-        return
-    end if
-
-    columns = m.gridColumns
-    cardW = m.gridCardWidth
-    m.gridRowStep = posterCompactLayout(0, 0, cardW).cardHeight + m.gridCardGapY
-
-    for index = 0 to m.gridItems.Count() - 1
-        gridItem = m.gridItems[index]
-        column = index MOD columns
-        row = Int(index / columns)
-
-        x = column * (cardW + m.gridCardGapX)
-        y = row * m.gridRowStep
-        layout = posterCompactLayout(x, y, cardW)
-
-        cardInfo = createPosterCard(gridItem, layout)
-        m.gridContent.appendChild(cardInfo.node)
-        m.gridCardNodes.Push({ node: cardInfo.node, focusBg: cardInfo.focusBg, focusShadow: cardInfo.focusShadow, index: index, row: row })
-    end for
-
-    liveScreenUpdateGridVisibility()
+    m.gridEmptyLabel.visible = (m.gridItems.Count() = 0)
+    m.gridPool.setItems(m.gridItems)
     liveScreenUpdateGridFocus()
 end sub
 
-sub liveScreenUpdateGridVisibility()
-    if m.gridRowStep = 0 then return
-    firstVisibleRow = Int(m.gridContentOffsetY / m.gridRowStep)
-    lastVisibleRow = Int((m.gridContentOffsetY + m.gridViewportHeight - 1) / m.gridRowStep)
-    for each cardNode in m.gridCardNodes
-        cardNode.node.visible = (cardNode.row >= firstVisibleRow) and (cardNode.row <= lastVisibleRow)
-    end for
-end sub
-
+' Delegates to the shared virtual grid (components/grid/VideoGrid.brs) —
+' see its header comment for why this no longer builds a card node per item.
 sub liveScreenUpdateGridFocus()
-    theme = UiThemeLight()
-    for each cardNode in m.gridCardNodes
-        isFocused = cardNode.index = m.selectedGridIndex and m.focusArea = "grid"
-        cardNode.focusShadow.visible = isFocused
-        if isFocused
-            cardNode.focusBg.color = theme.surfaceFocus
-            cardNode.node.scale = [1.16, 1.16]
-        else
-            cardNode.focusBg.color = theme.surface
-            cardNode.node.scale = [1.0, 1.0]
-        end if
-    end for
-    liveScreenScrollGridToFocus()
-end sub
-
-sub liveScreenScrollGridToFocus()
-    if m.gridCardNodes.Count() = 0 or m.gridRowStep = 0 then return
-
-    focusedRow = Int(m.selectedGridIndex / m.gridColumns)
-    rowTop = focusedRow * m.gridRowStep
-    rowBottom = rowTop + m.gridRowStep
-
-    currentOffset = m.gridContentOffsetY
-    newOffset = currentOffset
-
-    if rowTop < currentOffset
-        newOffset = rowTop
-    else if rowBottom > (currentOffset + m.gridViewportHeight)
-        newOffset = rowBottom - m.gridViewportHeight
-    end if
-
-    if newOffset < 0 then newOffset = 0
-    if newOffset <> currentOffset
-        liveScreenAnimateGridScroll(currentOffset, newOffset)
-        m.gridContentOffsetY = newOffset
-        liveScreenUpdateGridVisibility()
-    end if
-end sub
-
-sub liveScreenAnimateGridScroll(fromY as Integer, toY as Integer)
-    if m.gridScrollAnimation = invalid
-        animation = CreateObject("roSGNode", "Animation")
-        animation.duration = 0.25
-        animation.easeFunction = "inOutQuad"
-        interpolator = CreateObject("roSGNode", "Vector2DFieldInterpolator")
-        interpolator.key = [0, 1]
-        interpolator.fieldToInterp = "gridContent.translation"
-        animation.appendChild(interpolator)
-        m.top.appendChild(animation)
-        m.gridScrollAnimation = animation
-        m.gridScrollInterpolator = interpolator
-    end if
-
-    m.gridScrollInterpolator.keyValue = [[m.gridPad, m.gridPad - fromY], [m.gridPad, m.gridPad - toY]]
-    m.gridScrollAnimation.control = "start"
+    m.gridPool.setFocus(m.selectedGridIndex, m.focusArea = "grid")
 end sub
 
 sub liveScreenShowState(state as String)

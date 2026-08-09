@@ -65,11 +65,7 @@ sub init()
     m.gridCardWidth = 170
     m.gridCardGapX = 22
     m.gridCardGapY = 26
-    m.gridRowStep = 0
-    m.gridContentOffsetY = 0
     m.gridViewportHeight = 544
-    m.gridScrollAnimation = invalid
-    m.gridScrollInterpolator = invalid
     ' Same clip-padding trick as Library's filterbar mode (BrowseScreen.brs's
     ' configure()) — the 46px gap between the bar (bottom edge 114) and the
     ' grid's top (160) matters because clippingRect isn't reliably enforced
@@ -82,9 +78,20 @@ sub init()
     m.gridHost.translation = [gridBaseX - m.gridPad, gridBaseY - m.gridPad]
     m.gridHost.clippingRect = [0, 0, contentWidth + (m.gridPad * 2), m.gridViewportHeight + (m.gridPad * 2)]
     m.gridContent.translation = [m.gridPad, m.gridPad]
+    ' Single fixed geometry for this screen's whole lifetime (no per-instance
+    ' configure() call, unlike BrowseScreen.brs) — see components/grid/VideoGrid.brs.
+    m.gridPool = VideoGridPool({
+        scriptRoot: m.top
+        content: m.gridContent
+        columns: m.gridColumns
+        cardWidth: m.gridCardWidth
+        cardGapX: m.gridCardGapX
+        cardGapY: m.gridCardGapY
+        viewportHeight: m.gridViewportHeight
+        pad: m.gridPad
+    })
 
     m.gridItems = []
-    m.gridCardNodes = []
     m.selectedGridIndex = 0
     m.gridPage = 0
     m.gridPagination = invalid
@@ -616,11 +623,9 @@ sub onSearchResultsResponse(event as Object)
     m.gridPage = response.page
 
     if isAppend
-        startIndex = m.gridItems.Count()
         m.gridItems.Append(response.items)
         if m.gridPagination <> invalid and m.gridPagination.total_items <= m.gridItems.Count() then m.gridReachedEnd = true
-        searchScreenAppendGridItems(startIndex, response.items)
-        searchScreenUpdateGridVisibility()
+        m.gridPool.appendItems(m.gridItems.Count())
     else
         m.gridItems = response.items
         if m.gridPagination <> invalid and m.gridPagination.total_items <= m.gridItems.Count() then m.gridReachedEnd = true
@@ -647,120 +652,24 @@ sub onSearchResultsResponse(event as Object)
 end sub
 
 sub searchScreenResetGrid()
-    childCount = m.gridContent.getChildCount()
-    if childCount > 0 then m.gridContent.removeChildrenIndex(childCount, 0)
-    m.gridCardNodes = []
-    m.gridContentOffsetY = 0
-    m.gridContent.translation = [m.gridPad, m.gridPad]
-
-    if m.gridItems.Count() = 0
-        m.gridRowStep = 0
-        return
-    end if
-
-    m.gridRowStep = posterCompactLayout(0, 0, m.gridCardWidth).cardHeight + m.gridCardGapY
-    searchScreenAppendGridItems(0, m.gridItems)
-    searchScreenUpdateGridVisibility()
+    m.gridPool.setItems(m.gridItems)
     searchScreenUpdateGridFocus()
 end sub
 
-sub searchScreenAppendGridItems(startIndex as Integer, newItems as Object)
-    if m.gridRowStep = 0 then m.gridRowStep = posterCompactLayout(0, 0, m.gridCardWidth).cardHeight + m.gridCardGapY
-    columns = m.gridColumns
-    cardW = m.gridCardWidth
-
-    for i = 0 to newItems.Count() - 1
-        index = startIndex + i
-        gridItem = newItems[i]
-        column = index MOD columns
-        row = Int(index / columns)
-
-        x = column * (cardW + m.gridCardGapX)
-        y = row * m.gridRowStep
-        layout = posterCompactLayout(x, y, cardW)
-
-        cardInfo = createPosterCard(gridItem, layout)
-        m.gridContent.appendChild(cardInfo.node)
-        m.gridCardNodes.Push({ node: cardInfo.node, focusBg: cardInfo.focusBg, focusShadow: cardInfo.focusShadow, index: index, row: row })
-    end for
-end sub
-
-' Same strict zero-buffer visibility windowing as BrowseScreen.brs — not
-' relying on clippingRect being enforced on every runtime this ships to.
-sub searchScreenUpdateGridVisibility()
-    if m.gridRowStep = 0 then return
-    firstVisibleRow = Int(m.gridContentOffsetY / m.gridRowStep)
-    lastVisibleRow = Int((m.gridContentOffsetY + m.gridViewportHeight - 1) / m.gridRowStep)
-    for each cardNode in m.gridCardNodes
-        cardNode.node.visible = (cardNode.row >= firstVisibleRow) and (cardNode.row <= lastVisibleRow)
-    end for
-end sub
-
+' Delegates to the shared virtual grid (components/grid/VideoGrid.brs) —
+' see its header comment for why this no longer builds a card node per item.
 sub searchScreenUpdateGridFocus()
-    theme = UiThemeLight()
-    for each cardNode in m.gridCardNodes
-        isFocused = cardNode.index = m.selectedGridIndex and m.focusArea = "grid"
-        cardNode.focusShadow.visible = isFocused
-        if isFocused
-            cardNode.focusBg.color = theme.surfaceFocus
-            cardNode.node.scale = [1.16, 1.16]
-        else
-            cardNode.focusBg.color = theme.surface
-            cardNode.node.scale = [1.0, 1.0]
-        end if
-    end for
-    searchScreenScrollGridToFocus()
+    m.gridPool.setFocus(m.selectedGridIndex, m.focusArea = "grid")
     searchScreenMaybeLoadNextPage()
 end sub
 
-sub searchScreenScrollGridToFocus()
-    if m.gridCardNodes.Count() = 0 or m.gridRowStep = 0 then return
-
-    focusedRow = Int(m.selectedGridIndex / m.gridColumns)
-    rowTop = focusedRow * m.gridRowStep
-    rowBottom = rowTop + m.gridRowStep
-
-    currentOffset = m.gridContentOffsetY
-    newOffset = currentOffset
-
-    if rowTop < currentOffset
-        newOffset = rowTop
-    else if rowBottom > (currentOffset + m.gridViewportHeight)
-        newOffset = rowBottom - m.gridViewportHeight
-    end if
-
-    if newOffset < 0 then newOffset = 0
-    if newOffset <> currentOffset
-        searchScreenAnimateGridScroll(currentOffset, newOffset)
-        m.gridContentOffsetY = newOffset
-        searchScreenUpdateGridVisibility()
-    end if
-end sub
-
-sub searchScreenAnimateGridScroll(fromY as Integer, toY as Integer)
-    if m.gridScrollAnimation = invalid
-        animation = CreateObject("roSGNode", "Animation")
-        animation.duration = 0.25
-        animation.easeFunction = "inOutQuad"
-        interpolator = CreateObject("roSGNode", "Vector2DFieldInterpolator")
-        interpolator.key = [0, 1]
-        interpolator.fieldToInterp = "gridContent.translation"
-        animation.appendChild(interpolator)
-        m.top.appendChild(animation)
-        m.gridScrollAnimation = animation
-        m.gridScrollInterpolator = interpolator
-    end if
-
-    m.gridScrollInterpolator.keyValue = [[m.gridPad, m.gridPad - fromY], [m.gridPad, m.gridPad - toY]]
-    m.gridScrollAnimation.control = "start"
-end sub
-
 ' Fetch the next page once focus is within 2 rows of the bottom of what's
-' currently loaded. Guarded by a flat item cap (m.gridItemCap, init()).
+' currently loaded. Guarded by a flat item cap (m.gridItemCap, init()) — this
+' bounds how many items the data list itself grows to; node/texture count is
+' separately bounded by m.gridPool regardless of list length.
 sub searchScreenMaybeLoadNextPage()
     if m.gridLoadingMore or m.gridReachedEnd then return
     if m.gridItems.Count() = 0 or m.gridItems.Count() >= m.gridItemCap then return
-    if m.gridRowStep = 0 then return
 
     totalRows = Int((m.gridItems.Count() - 1) / m.gridColumns) + 1
     focusedRow = Int(m.selectedGridIndex / m.gridColumns)

@@ -14,11 +14,7 @@ sub init()
     m.gridCardWidth = 170
     m.gridCardGapX = 22
     m.gridCardGapY = 26
-    m.gridRowStep = 0
-    m.gridContentOffsetY = 0
     m.gridViewportHeight = 596
-    m.gridScrollAnimation = invalid
-    m.gridScrollInterpolator = invalid
 
     ' Scaled-up (focus "pop") tiles in the first row/column would otherwise
     ' get clipped flush against the viewport edge, since clippingRect starts
@@ -35,6 +31,35 @@ sub init()
     m.gridHost.translation = [gridBaseX - m.gridPad, gridBaseY - m.gridPad]
     m.gridHost.clippingRect = [0, 0, contentWidth + (m.gridPad * 2), m.gridViewportHeight + (m.gridPad * 2)]
     m.gridContent.translation = [m.gridPad, m.gridPad]
+    ' Single fixed geometry for this screen's whole lifetime — see
+    ' components/grid/VideoGrid.brs. Previously this screen rendered its
+    ' whole (unpaginated, potentially large — History + New Episodes +
+    ' every bookmark folder) item list as one card node per item with no
+    ' cap at all; the pool bounds node/texture count to the visible
+    ' viewport regardless of list length. showUnwatchedBadge is always true
+    ' in the template (unlike the old per-row-selection flag) since a
+    ' pooled card's node list can't change after creation — whether the
+    ' badge actually renders is decided per item by updatePosterCard
+    ' (item.unwatchedCount > 0), which is naturally false/absent for rows
+    ' (Movies, bookmark folders) that never had one.
+    m.gridPool = VideoGridPool({
+        scriptRoot: m.top
+        content: m.gridContent
+        columns: m.gridColumns
+        cardWidth: m.gridCardWidth
+        cardGapX: m.gridCardGapX
+        cardGapY: m.gridCardGapY
+        viewportHeight: m.gridViewportHeight
+        pad: m.gridPad
+        layoutTemplate: { showUnwatchedBadge: true }
+    })
+    m.gridEmptyLabel = CreateObject("roSGNode", "Label")
+    m.gridEmptyLabel.text = "No items"
+    m.gridEmptyLabel.width = 700
+    m.gridEmptyLabel.height = 40
+    m.gridEmptyLabel.color = UiThemeLight().muted
+    m.gridEmptyLabel.visible = false
+    m.gridContent.appendChild(m.gridEmptyLabel)
 
     m.pillNav.tabs = [
         { id: "search", label: "Поиск" }
@@ -57,8 +82,6 @@ sub init()
     m.selectedRowIndex = 0
     m.selectedGridIndex = 0
     m.gridItems = []
-    m.gridCardNodes = []
-    m.gridShowUnwatchedBadge = false
     m.pendingLoads = 0
     m.loadFailed = false
     m.pendingFocusGrid = false
@@ -67,10 +90,28 @@ sub init()
     continueScreenLoadAll()
 end sub
 
+' Fires a single token-refresh preflight before the real fan-out below —
+' otherwise all 3 tasks below would independently discover an expired token
+' and race to refresh it concurrently (TokenStore.brs has no cross-task
+' locking; the losing refresh call fails against an already-rotated token and
+' signs the user out). No-op HTTP-wise if the token is already valid.
 sub continueScreenLoadAll()
+    continueScreenShowState("loading")
+    preflightTask = CreateObject("roSGNode", "ContentTask")
+    preflightTask.command = "ensureFreshTokens"
+    preflightTask.request = {}
+    preflightTask.observeField("response", "onTokenPreflightResponse")
+    preflightTask.control = "RUN"
+    m.preflightTask = preflightTask
+end sub
+
+sub onTokenPreflightResponse(event as Object)
+    continueScreenLoadAllContent()
+end sub
+
+sub continueScreenLoadAllContent()
     m.pendingLoads = 3
     m.loadFailed = false
-    continueScreenShowState("loading")
 
     newEpisodesTask = CreateObject("roSGNode", "ContentTask")
     newEpisodesTask.command = "loadContinueNewEpisodesPage"
@@ -199,12 +240,12 @@ end sub
 
 sub continueScreenBuildLeftRows()
     rows = []
-    rows.Push({ kind: "newEpisodes", section: "unwatched", label: "Сериалы", count: m.newEpisodesCount, items: m.newEpisodesItems, showUnwatchedBadge: true })
-    rows.Push({ kind: "movies", section: "unwatched", label: "Фильмы", count: m.moviesCount, items: m.moviesItems, showUnwatchedBadge: false })
+    rows.Push({ kind: "newEpisodes", section: "unwatched", label: "Сериалы", count: m.newEpisodesCount, items: m.newEpisodesItems })
+    rows.Push({ kind: "movies", section: "unwatched", label: "Фильмы", count: m.moviesCount, items: m.moviesItems })
 
     if m.bookmarkFolders <> invalid
         for each folder in m.bookmarkFolders
-            rows.Push({ kind: "bookmarkFolder", section: "bookmarks", label: folder.title, count: folder.count, folderId: folder.folderId, items: invalid, showUnwatchedBadge: false })
+            rows.Push({ kind: "bookmarkFolder", section: "bookmarks", label: folder.title, count: folder.count, folderId: folder.folderId, items: invalid })
         end for
     end if
 
@@ -322,7 +363,7 @@ sub continueScreenSelectRow(index as Integer)
     end if
 
     m.selectedGridIndex = 0
-    continueScreenSetGridItems(row.items, row.showUnwatchedBadge)
+    continueScreenSetGridItems(row.items)
 end sub
 
 sub continueScreenLoadBookmarkFolderItems(row as Object)
@@ -353,7 +394,7 @@ sub onBookmarkFolderItemsResponse(event as Object)
             m.leftRows[i] = row
             if i = m.selectedRowIndex
                 m.selectedGridIndex = 0
-                continueScreenSetGridItems(items, false)
+                continueScreenSetGridItems(items)
             end if
             exit for
         end if
@@ -362,133 +403,23 @@ sub onBookmarkFolderItemsResponse(event as Object)
     continueScreenShowState("content")
 end sub
 
-sub continueScreenSetGridItems(items as Dynamic, showUnwatchedBadge as Boolean)
+sub continueScreenSetGridItems(items as Dynamic)
     if items = invalid then items = []
     m.gridItems = items
-    m.gridShowUnwatchedBadge = showUnwatchedBadge
     continueScreenRenderGrid()
 end sub
 
-' Renders the whole item list (not windowed) into m.gridContent, which sits
-' inside m.gridHost's clippingRect. Scrolling is done by animating
-' m.gridContent's translation rather than re-rendering a page window, so
-' moving focus down slides smoothly to the next row instead of jumping.
+' Delegates to the shared virtual grid (components/grid/VideoGrid.brs) — see
+' its header comment for why this no longer builds a card node per item
+' (previously this rendered the whole item list at once, unbounded).
 sub continueScreenRenderGrid()
-    childCount = m.gridContent.getChildCount()
-    if childCount > 0 then m.gridContent.removeChildrenIndex(childCount, 0)
-    m.gridCardNodes = []
-    m.gridContentOffsetY = 0
-    m.gridContent.translation = [m.gridPad, m.gridPad]
-
-    if m.gridItems.Count() = 0
-        empty = CreateObject("roSGNode", "Label")
-        empty.text = "No items"
-        empty.width = 700
-        empty.height = 40
-        empty.color = UiThemeLight().muted
-        m.gridContent.appendChild(empty)
-        return
-    end if
-
-    columns = m.gridColumns
-    cardW = m.gridCardWidth
-    m.gridRowStep = posterCompactLayout(0, 0, cardW).cardHeight + m.gridCardGapY
-
-    for index = 0 to m.gridItems.Count() - 1
-        gridItem = m.gridItems[index]
-        column = index MOD columns
-        row = Int(index / columns)
-
-        x = column * (cardW + m.gridCardGapX)
-        y = row * m.gridRowStep
-        layout = posterCompactLayout(x, y, cardW)
-        layout.showUnwatchedBadge = m.gridShowUnwatchedBadge
-
-        cardInfo = createPosterCard(gridItem, layout)
-        m.gridContent.appendChild(cardInfo.node)
-        m.gridCardNodes.Push({ node: cardInfo.node, focusBg: cardInfo.focusBg, focusShadow: cardInfo.focusShadow, index: index, row: row })
-    end for
-
-    continueScreenUpdateGridVisibility()
+    m.gridEmptyLabel.visible = (m.gridItems.Count() = 0)
+    m.gridPool.setItems(m.gridItems)
     continueScreenUpdateGridFocus()
 end sub
 
-' Explicitly hide rows outside the visible window (plus a 1-row buffer so
-' the row sliding in/out during the scroll animation stays visible). Doesn't
-' rely on m.gridHost's clippingRect actually being enforced by the runtime —
-' cheap insurance in case a given device/simulator doesn't honor it.
-sub continueScreenUpdateGridVisibility()
-    if m.gridRowStep = 0 then return
-    ' No buffer row: since m.gridHost's clippingRect isn't reliably clipping
-    ' content on every runtime this ships to, a buffered row (kept visible
-    ' for animation smoothness) renders fully unclipped wherever it lands —
-    ' including behind the nav bar once it's scrolled out. Strict bounds
-    ' mean the outgoing row disappears right as a scroll starts rather than
-    ' sliding fully out of view, which is a small tradeoff for not leaking
-    ' content outside the grid area.
-    firstVisibleRow = Int(m.gridContentOffsetY / m.gridRowStep)
-    lastVisibleRow = Int((m.gridContentOffsetY + m.gridViewportHeight - 1) / m.gridRowStep)
-    for each cardNode in m.gridCardNodes
-        cardNode.node.visible = (cardNode.row >= firstVisibleRow) and (cardNode.row <= lastVisibleRow)
-    end for
-end sub
-
 sub continueScreenUpdateGridFocus()
-    theme = UiThemeLight()
-    for each cardNode in m.gridCardNodes
-        isFocused = cardNode.index = m.selectedGridIndex and m.focusArea = "grid"
-        cardNode.focusShadow.visible = isFocused
-        if isFocused
-            cardNode.focusBg.color = theme.surfaceFocus
-            cardNode.node.scale = [1.16, 1.16]
-        else
-            cardNode.focusBg.color = theme.surface
-            cardNode.node.scale = [1.0, 1.0]
-        end if
-    end for
-    continueScreenScrollGridToFocus()
-end sub
-
-sub continueScreenScrollGridToFocus()
-    if m.gridCardNodes.Count() = 0 or m.gridRowStep = 0 then return
-
-    focusedRow = Int(m.selectedGridIndex / m.gridColumns)
-    rowTop = focusedRow * m.gridRowStep
-    rowBottom = rowTop + m.gridRowStep
-
-    currentOffset = m.gridContentOffsetY
-    newOffset = currentOffset
-
-    if rowTop < currentOffset
-        newOffset = rowTop
-    else if rowBottom > (currentOffset + m.gridViewportHeight)
-        newOffset = rowBottom - m.gridViewportHeight
-    end if
-
-    if newOffset < 0 then newOffset = 0
-    if newOffset <> currentOffset
-        continueScreenAnimateGridScroll(currentOffset, newOffset)
-        m.gridContentOffsetY = newOffset
-        continueScreenUpdateGridVisibility()
-    end if
-end sub
-
-sub continueScreenAnimateGridScroll(fromY as Integer, toY as Integer)
-    if m.gridScrollAnimation = invalid
-        animation = CreateObject("roSGNode", "Animation")
-        animation.duration = 0.25
-        animation.easeFunction = "inOutQuad"
-        interpolator = CreateObject("roSGNode", "Vector2DFieldInterpolator")
-        interpolator.key = [0, 1]
-        interpolator.fieldToInterp = "gridContent.translation"
-        animation.appendChild(interpolator)
-        m.top.appendChild(animation)
-        m.gridScrollAnimation = animation
-        m.gridScrollInterpolator = interpolator
-    end if
-
-    m.gridScrollInterpolator.keyValue = [[m.gridPad, m.gridPad - fromY], [m.gridPad, m.gridPad - toY]]
-    m.gridScrollAnimation.control = "start"
+    m.gridPool.setFocus(m.selectedGridIndex, m.focusArea = "grid")
 end sub
 
 sub continueScreenShowState(state as String)

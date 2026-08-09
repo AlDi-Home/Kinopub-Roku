@@ -72,6 +72,7 @@
     </children>
     <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
     <script type="text/brightscript" uri="pkg:/components/cards/PosterCard.brs" />
+    <script type="text/brightscript" uri="pkg:/components/grid/VideoGrid.brs" />
     <script type="text/brightscript" uri="pkg:/source/services/SearchHistoryStore.brs" />
     <script type="text/brightscript" uri="pkg:/components/screens/SearchScreen.brs" />
 </component>
