@@ -114,6 +114,9 @@ function kinoItemNormalizeResponse(body as Dynamic, requestedItemId as Integer) 
             description: m.description(item)
             metadata: m.metadata(item)
             detailFacts: m.detailFacts(item)
+            imdbRating: m.stringField(item, "imdb_rating", "")
+            kinopoiskRating: m.stringField(item, "kinopoisk_rating", "")
+            kinopubRating: m.stringField(item, "rating", "")
             videos: videos
             seasons: seasons
             playableCount: playableCount

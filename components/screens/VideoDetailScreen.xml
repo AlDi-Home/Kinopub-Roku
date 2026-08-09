@@ -11,104 +11,112 @@
     <field id="nextPlayback" type="assocarray" alwaysNotify="true" />
   </interface>
   <children>
-    <Rectangle width="1280" height="720" color="#090B0F" />
+    <Rectangle width="1280" height="720" color="#EEF5F8" />
 
     <Group id="loadingGroup" translation="[96,72]">
-      <Label text="Loading video..." color="#D1D5DB" />
+      <Label text="Загрузка..." color="#5B6B79" />
     </Group>
 
     <Group id="errorGroup" translation="[96,72]" visible="false">
-      <Label id="errorLabel" text="Unable to load video details" color="#FCA5A5" width="900" />
+      <Label id="errorLabel" text="Не удалось загрузить видео" color="#E11D2E" width="900" />
       <Group id="retryButton" translation="[0,64]">
-        <Rectangle id="retryFocusBg" width="190" height="48" color="#E5E7EB" />
-        <Label text="Retry" translation="[58,14]" color="#111827" />
+        <Rectangle id="retryFocusBg" width="190" height="48" color="#BFDBFE" />
+        <Label text="Повторить" translation="[58,14]" color="#111827" />
       </Group>
     </Group>
 
+    <!-- Hero backdrop fills the whole screen as a STATIC background layer —
+         a direct child of detailGroup, never translated, so it stays put
+         and stays full-bleed no matter how far the foreground content below
+         scrolls. (An earlier version nested the backdrop inside the group
+         that scrolls when entering the episode list — once scrolled up, the
+         backdrop's own bottom edge moved with it, exposing flat canvas
+         below. Splitting it out fixes that.) Scrim is a pre-rendered
+         vertical gradient PNG (images/ui/backdrop-scrim.png, 4x512 black
+         alpha ramp, stretched to fill) darkening toward the bottom — Roku's
+         Rectangle has no native gradient, and stacking flat semi-transparent
+         rectangles compounds their opacity in the overlap zones, producing
+         visible dark seams at each boundary (tried first, didn't work). -->
     <Group id="detailGroup" visible="false">
-      <Rectangle width="1280" height="410" color="#0B1018" opacity="0.94" />
-      <Poster id="heroArtworkPoster" width="1280" height="410" opacity="0.34" loadDisplayMode="scaleToFill" />
-      <Rectangle id="heroGradientOverlay" width="1280" height="720" color="#090B0F" opacity="0.68" />
-      <Rectangle id="detailAccentBar" translation="[80,38]" width="72" height="4" color="#60A5FA" />
+      <Rectangle id="heroFallbackBg" width="1280" height="720" color="#111827" />
+      <Poster id="backdropPoster" width="1280" height="720" loadDisplayMode="scaleToZoom" />
+      <Poster id="heroScrimGradient" width="1280" height="720" loadDisplayMode="scaleToFill" uri="pkg:/images/ui/backdrop-scrim.png" />
 
-      <Group id="leftPanel" translation="[80,58]">
-        <Rectangle id="posterFallback" width="190" height="286" color="#253142" visible="true" />
-        <Poster id="poster" width="190" height="286" loadDisplayMode="scaleToFit" />
-        <Group id="detailFactsGroup" translation="[220,2]" visible="false">
-          <Label text="Details" color="#F5F5F5" />
-          <Group id="detailFactsHost" translation="[0,34]" />
-        </Group>
-        <Label id="titleLabel" translation="[0,318]" width="680" color="#F5F5F5" />
-        <Label id="metadataLabel" translation="[0,364]" width="680" color="#D1D5DB" />
-        <Group id="historyMetaGroup" translation="[0,394]" visible="false">
-          <Label id="historyMetaLabel" width="680" color="#9CA3AF" />
-        </Group>
-        <Rectangle id="descriptionFocusBg" translation="[-10,402]" width="700" height="134" color="#1E3A8A" opacity="0" />
-        <Label id="descriptionLabel" translation="[0,412]" width="680" height="112" wrap="true" color="#D1D5DB" />
-        <Label text="OK opens full description" translation="[0,526]" width="680" color="#9CA3AF" />
-        <Group id="playButton" translation="[0,560]">
-          <Rectangle id="playFocusBg" width="252" height="56" color="#2563EB" />
-          <Label id="playButtonLabel" text="Play" translation="[88,18]" color="#F8FAFC" />
-        </Group>
-        <Group id="bookmarkActionGroup" translation="[272,560]">
-          <Rectangle id="bookmarkFocusBg" width="232" height="56" color="#172033" />
-          <Label id="bookmarkLabel" text="Bookmarks" translation="[52,18]" color="#D1D5DB" />
-        </Group>
-        <Label id="playbackErrorLabel" translation="[0,626]" width="680" color="#FCA5A5" />
-      </Group>
+      <!-- Foreground content — this whole group scrolls up as one unit when
+           entering the episode list (videoDetailScreenSetHeroScrolled),
+           sliding over the static backdrop above. -->
+      <Group id="detailScrollHost" translation="[0,0]">
+        <Group id="heroGroup" translation="[0,0]">
+          <Label id="heroTitleLabel" translation="[64,32]" width="820" height="40" color="#FFFFFF" />
+          <Label id="heroMetaLabel" translation="[64,76]" width="820" height="22" color="#D1D9E0" />
+          <Group id="heroBadgesHost" translation="[64,100]" />
+          <Rectangle id="descriptionFocusBg" translation="[54,120]" width="800" height="96" color="#FFFFFF" opacity="0" />
+          <Label id="heroDescriptionLabel" translation="[64,128]" width="820" height="84" wrap="true" color="#E5E7EB" />
 
-      <Group id="rightPanel" translation="[780,76]">
-        <Label id="panelTitleLabel" text="Video" color="#F5F5F5" />
-        <Group id="seasonTabsHost" translation="[0,48]" />
-        <Group id="episodeListHost" translation="[0,104]" />
-        <Group id="episodeCursor" translation="[0,104]" visible="false">
-          <Rectangle width="380" height="4" color="#60A5FA" />
-          <Rectangle translation="[0,70]" width="380" height="4" color="#60A5FA" />
-          <Rectangle width="4" height="74" color="#60A5FA" />
-          <Rectangle translation="[376,0]" width="4" height="74" color="#60A5FA" />
+          <Group id="heroActionsHost" translation="[64,222]" />
+          <Label id="playbackErrorLabel" translation="[340,222]" width="480" height="24" color="#FCA5A5" visible="false" />
         </Group>
-        <Label id="episodeScrollUpChevron" text="^" translation="[396,104]" width="32" horizAlign="center" color="#D1D5DB" visible="false" />
-        <Label id="episodeScrollDownChevron" text="v" translation="[396,524]" width="32" horizAlign="center" color="#D1D5DB" visible="false" />
-        <Label id="noMediaLabel" text="No playable video is available" translation="[0,118]" width="380" color="#D1D5DB" visible="false" />
-        <Group id="trailerGroup" translation="[0,438]" visible="false">
-          <Label text="Trailer" color="#F5F5F5" />
-          <Rectangle id="trailerFocusBg" translation="[0,32]" width="380" height="48" color="#172033" />
-          <Label id="trailerLabel" text="Play trailer" translation="[16,46]" width="340" color="#D1D5DB" />
-        </Group>
-        <Group id="similarGroup" translation="[0,520]" visible="false">
-          <Label text="Similar" color="#F5F5F5" />
-          <Group id="similarHost" translation="[0,34]" />
-          <Group id="similarCursor" translation="[0,34]" visible="false">
-            <Rectangle width="118" height="4" color="#F5F5F5" />
-            <Rectangle translation="[0,88]" width="118" height="4" color="#F5F5F5" />
-            <Rectangle width="4" height="92" color="#F5F5F5" />
-            <Rectangle translation="[114,0]" width="4" height="92" color="#F5F5F5" />
+
+        <!-- Below the hero: "content" (a vertically-scrollable stack of
+             heterogeneous rows — seasons tiles, recommendations rail,
+             ratings, tech info, built entirely at runtime by
+             videoDetailScreenRenderContent) and the episode list are
+             mutually exclusive "sub-views" sharing the same region, not
+             simultaneously visible (matches the reference app's flow — see
+             VideoDetailScreen.brs's videoDetailScreenApplySectionVisibility).
+             No background of their own — they sit directly on the backdrop
+             above, with light/white text and semi-transparent row chrome
+             (set in VideoDetailScreen.brs) so the image shows through. -->
+        <Group id="belowHeroHost" translation="[0,380]">
+          <Group id="contentSection" visible="false">
+            <Group id="contentClipHost">
+              <Group id="contentHost" />
+            </Group>
+          </Group>
+
+          <Group id="episodesSection" visible="false">
+            <Label id="episodesHeadingLabel" text="" translation="[64,20]" width="700" height="26" color="#FFFFFF" />
+            <Group id="episodesClipHost">
+              <Group id="episodesHost" />
+            </Group>
+            <Label id="noMediaLabel" text="Видео недоступно" translation="[64,60]" width="700" color="#D1D9E0" visible="false" />
           </Group>
         </Group>
       </Group>
     </Group>
 
-    <Group id="descriptionOverlayGroup" visible="false">
-      <Rectangle width="1280" height="720" color="#000000" opacity="0.78" />
-      <Rectangle translation="[126,82]" width="1028" height="556" color="#0F172A" />
-      <Rectangle translation="[126,82]" width="1028" height="4" color="#60A5FA" />
-      <Label text="Description" translation="[170,122]" width="900" color="#F5F5F5" font="font:LargeBoldSystemFont" />
-      <Label id="descriptionOverlayTextLabel" translation="[170,178]" width="940" height="374" wrap="true" color="#D1D5DB" />
-      <Label id="descriptionOverlayScrollUpChevron" text="^" translation="[1076,178]" width="34" horizAlign="center" color="#D1D5DB" visible="false" />
-      <Label id="descriptionOverlayScrollDownChevron" text="v" translation="[1076,532]" width="34" horizAlign="center" color="#D1D5DB" visible="false" />
-      <Label text="Back to close" translation="[170,582]" width="940" color="#9CA3AF" />
+    <!-- Restyled to the light dialog aesthetic (ListPickerDialog/
+         ExitConfirmDialog); kept inline (not a shared component — a
+         multi-toggle folder list with exactly one caller) but follows the
+         same "never takes real focus" rule: the screen keeps focus and
+         checks m.bookmarkOverlayOpen at the top of its own onKeyEvent. -->
+    <Group id="bookmarkOverlayGroup" visible="false">
+      <Rectangle width="1280" height="720" color="#000000" opacity="0.55" />
+      <Group translation="[430,150]">
+        <Rectangle width="420" height="420" color="#FFFFFF" />
+        <Label text="Закладки" translation="[20,16]" width="380" height="30" color="#111827" />
+        <Label id="bookmarkOverlayStatusLabel" text="" translation="[20,52]" width="380" height="22" color="#5B6B79" />
+        <Group id="bookmarkOverlayFoldersHost" translation="[20,84]" />
+      </Group>
     </Group>
 
-    <Group id="bookmarkOverlayGroup" visible="false">
-      <Rectangle width="1280" height="720" color="#000000" opacity="0.72" />
-      <Group translation="[360,120]">
-        <Rectangle width="560" height="480" color="#0F172A" />
-        <Label text="Add to Bookmarks" translation="[28,24]" width="500" color="#F5F5F5" />
-        <Label id="bookmarkOverlayStatusLabel" text="" translation="[28,68]" width="500" color="#9CA3AF" />
-        <Group id="bookmarkOverlayFoldersHost" translation="[28,112]" />
-        <Label text="OK toggles folder  |  Back closes" translation="[28,430]" width="500" color="#9CA3AF" />
+    <!-- Full-description "semiwindow" — OK on the focused description text
+         in the hero opens this; Back or OK closes it and returns focus to
+         wherever it was (the screen never actually moves real focus here,
+         same "dialog never takes real focus" pattern as bookmarkOverlayGroup
+         above). Dark panel (not the light dialog style) since it's showing
+         hero-originated text, consistent with the hero's own palette. -->
+    <Group id="descriptionOverlayGroup" visible="false">
+      <Rectangle width="1280" height="720" color="#000000" opacity="0.7" />
+      <Group translation="[190,140]">
+        <Rectangle width="900" height="440" color="#111827" />
+        <Label id="descriptionOverlayTitleLabel" text="" translation="[32,24]" width="836" height="34" color="#FFFFFF" />
+        <Label id="descriptionOverlayTextLabel" text="" translation="[32,72]" width="836" height="320" wrap="true" color="#E5E7EB" />
+        <Label text="Назад — закрыть" translation="[32,404]" width="600" height="24" color="#9CA3AF" />
       </Group>
     </Group>
   </children>
+  <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
+  <script type="text/brightscript" uri="pkg:/components/cards/PosterCard.brs" />
   <script type="text/brightscript" uri="pkg:/components/screens/VideoDetailScreen.brs" />
 </component>

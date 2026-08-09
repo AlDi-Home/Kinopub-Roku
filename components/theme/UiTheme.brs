@@ -23,6 +23,8 @@ function UiThemeLight() as Object
         badgeText: "#111827"
         unwatchedBadgeBg: "#E11D2E"
         unwatchedBadgeText: "#FFFFFF"
+        watchedBadgeBg: "#16A34A"
+        watchedBadgeText: "#FFFFFF"
         progressTrack: "#E2E8EE"
         progressFill: "#2563EB"
     }

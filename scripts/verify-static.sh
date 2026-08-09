@@ -65,6 +65,7 @@ required_files=(
   images/ui/icon-kinopub.png
   images/ui/icon-search.png
   images/ui/icon-settings.png
+  images/ui/backdrop-scrim.png
   components/fonts/RokuText-Regular.otf
   config/kinoapi.example.json
   scripts/generate-config.sh
@@ -351,13 +352,9 @@ grep -q 'bookmarkFolderScrollUpChevron' components/screens/HomeScreen.xml
 grep -q 'bookmarkFolderScrollDownChevron' components/screens/HomeScreen.xml
 grep -q 'bookmarkItemsScrollUpChevron' components/screens/HomeScreen.xml
 grep -q 'bookmarkItemsScrollDownChevron' components/screens/HomeScreen.xml
-grep -q "function detailUiPalette" components/screens/VideoDetailScreen.brs
-grep -q "function detailButtonColor" components/screens/VideoDetailScreen.brs
-grep -q "createEpisodeRow" components/screens/VideoDetailScreen.brs
-grep -q "m.playButtonLabel.color = palette.primaryText" components/screens/VideoDetailScreen.brs
-grep -q "m.descriptionFocusBg.color = palette.surfaceFocus" components/screens/VideoDetailScreen.brs
-grep -q 'id="heroGradientOverlay"' components/screens/VideoDetailScreen.xml
-grep -q 'id="detailAccentBar"' components/screens/VideoDetailScreen.xml
+grep -q "videoDetailScreenCreateEpisodeRow" components/screens/VideoDetailScreen.brs
+grep -q 'id="heroScrimGradient"' components/screens/VideoDetailScreen.xml
+grep -q 'id="backdropPoster"' components/screens/VideoDetailScreen.xml
 grep -q 'accountContent' components/screens/HomeScreen.xml
 grep -q 'accountLoadingGroup' components/screens/HomeScreen.xml
 grep -q 'accountErrorGroup' components/screens/HomeScreen.xml
@@ -431,38 +428,36 @@ grep -q "m.homeScreen.visible = true" components/AppScene.brs
 grep -q "VideoDetailScreen" components/AppScene.brs
 grep -q "backRequested" components/screens/VideoDetailScreen.xml
 grep -q "playbackErrorLabel" components/screens/VideoDetailScreen.xml
-grep -q 'id="heroArtworkPoster"' components/screens/VideoDetailScreen.xml
-grep -q 'loadDisplayMode="scaleToFit"' components/screens/VideoDetailScreen.xml
-grep -q "episodeScrollUpChevron" components/screens/VideoDetailScreen.xml
-grep -q "episodeScrollDownChevron" components/screens/VideoDetailScreen.xml
-grep -q 'id="historyMetaGroup"' components/screens/VideoDetailScreen.xml
-grep -q 'id="historyMetaLabel"' components/screens/VideoDetailScreen.xml
-grep -q 'id="trailerGroup"' components/screens/VideoDetailScreen.xml
-grep -q 'id="trailerFocusBg"' components/screens/VideoDetailScreen.xml
-grep -q 'id="similarGroup"' components/screens/VideoDetailScreen.xml
-grep -q 'id="similarHost"' components/screens/VideoDetailScreen.xml
-grep -q 'id="similarCursor"' components/screens/VideoDetailScreen.xml
-grep -q "m.historyMetaGroup = m.top.findNode(\"historyMetaGroup\")" components/screens/VideoDetailScreen.brs
-grep -q "m.historyMetaLabel = m.top.findNode(\"historyMetaLabel\")" components/screens/VideoDetailScreen.brs
-grep -q "m.trailerGroup = m.top.findNode(\"trailerGroup\")" components/screens/VideoDetailScreen.brs
-grep -q "m.similarGroup = m.top.findNode(\"similarGroup\")" components/screens/VideoDetailScreen.brs
-grep -q "renderHistoryMetadata()" components/screens/VideoDetailScreen.brs
-grep -q "m.historyMetaGroup.visible = false" components/screens/VideoDetailScreen.brs
-grep -q "applyHistoryMetadataLayout(false)" components/screens/VideoDetailScreen.brs
-grep -q "applyHistoryMetadataLayout(true)" components/screens/VideoDetailScreen.brs
-grep -q "historyMetadataText" components/screens/VideoDetailScreen.brs
-grep -q "renderDetailExtras()" components/screens/VideoDetailScreen.brs
-grep -q "m.trailerGroup.visible = false" components/screens/VideoDetailScreen.brs
-grep -q "m.similarGroup.visible = false" components/screens/VideoDetailScreen.brs
-grep -q "startTrailerPlayback()" components/screens/VideoDetailScreen.brs
-grep -q "selectSimilarItem()" components/screens/VideoDetailScreen.brs
+grep -q 'id="backdropPoster"' components/screens/VideoDetailScreen.xml
+grep -q 'loadDisplayMode="scaleToZoom"' components/screens/VideoDetailScreen.xml
+grep -q 'id="contentHost"' components/screens/VideoDetailScreen.xml
+grep -q 'id="episodesHost"' components/screens/VideoDetailScreen.xml
+grep -q 'id="contentSection"' components/screens/VideoDetailScreen.xml
+grep -q 'id="episodesSection"' components/screens/VideoDetailScreen.xml
+grep -q "m.contentHost = m.top.findNode(\"contentHost\")" components/screens/VideoDetailScreen.brs
+grep -q "m.episodesHost = m.top.findNode(\"episodesHost\")" components/screens/VideoDetailScreen.brs
+grep -q "sub videoDetailScreenRenderSeasonTiles(row as Object)" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenRenderEpisodes()" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenApplySectionVisibility" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenSeasonUnwatchedCount" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenSeasonAllWatched" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenStartTrailerPlayback()" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenHasPlayableTrailer" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenSelectSeason" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenMoveContentRailCursor" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenScrollEpisodesToFocus" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenAnimateEpisodesScroll" components/screens/VideoDetailScreen.brs
+grep -q "showUnwatchedBadge = true" components/screens/VideoDetailScreen.brs
+grep -q "showWatchedBadge = true" components/screens/VideoDetailScreen.brs
+grep -q "m.hasSeasonsRow" components/screens/VideoDetailScreen.brs
+grep -q "sub videoDetailScreenRenderContent()" components/screens/VideoDetailScreen.brs
+grep -q "function videoDetailScreenBuildRailRow" components/screens/VideoDetailScreen.brs
+grep -q "function videoDetailScreenRenderRatingsRow" components/screens/VideoDetailScreen.brs
+grep -q "function videoDetailScreenRenderInfoRow" components/screens/VideoDetailScreen.brs
 grep -q 'source: "similar"' components/screens/VideoDetailScreen.brs
-grep -q "seasonTabPanelWidth" components/screens/VideoDetailScreen.brs
-grep -q "episodeListY" components/screens/VideoDetailScreen.brs
-grep -q "updateEpisodeListLayout" components/screens/VideoDetailScreen.brs
-grep -q "episodeScrollUpChevron" components/screens/VideoDetailScreen.brs
-grep -q "updateEpisodeScrollChevrons" components/screens/VideoDetailScreen.brs
-grep -q "visibleEpisodeStart + m.maxVisibleEpisodes" components/screens/VideoDetailScreen.brs
+grep -q "imdbRating: m.stringField(item, \"imdb_rating\", \"\")" source/services/KinoItemService.brs
+grep -q "kinopoiskRating: m.stringField(item, \"kinopoisk_rating\", \"\")" source/services/KinoItemService.brs
+grep -q "kinopubRating: m.stringField(item, \"rating\", \"\")" source/services/KinoItemService.brs
 if grep -q 'id="backdropPoster".*loadDisplayMode="scaleToFill"' components/screens/VideoDetailScreen.xml; then
   echo "Video detail hero image must not stretch artwork with scaleToFill." >&2
   exit 1
@@ -486,13 +481,8 @@ grep -q '"Voice"' source/services/KinoItemService.brs
 grep -q '"Quality"' source/services/KinoItemService.brs
 grep -q '"Ratings"' source/services/KinoItemService.brs
 grep -q '"Series"' source/services/KinoItemService.brs
-grep -q "m.detailFactsGroup = m.top.findNode(\"detailFactsGroup\")" components/screens/VideoDetailScreen.brs
-grep -q "m.detailFactsHost = m.top.findNode(\"detailFactsHost\")" components/screens/VideoDetailScreen.brs
-grep -q 'id="detailFactsGroup"' components/screens/VideoDetailScreen.xml
-grep -q 'id="detailFactsHost"' components/screens/VideoDetailScreen.xml
-grep -q "renderDetailFacts()" components/screens/VideoDetailScreen.brs
-grep -q "m.detailFactsGroup.visible = false" components/screens/VideoDetailScreen.brs
-grep -q "createDetailFactRow" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenRenderBadges()" components/screens/VideoDetailScreen.brs
+grep -q "m.item.detailFacts" components/screens/VideoDetailScreen.brs
 grep -q "normalizeVideos" source/services/KinoItemService.brs
 grep -q "normalizeSeasons" source/services/KinoItemService.brs
 grep -q "streamUrl" source/services/KinoItemService.brs
@@ -632,35 +622,20 @@ grep -q 'sub onLivePlaybackSelected' components/AppScene.brs
 grep -q 'function isLivePlayback' components/screens/PlayerScreen.brs
 grep -q 'if isLivePlayback() then return' components/screens/PlayerScreen.brs
 grep -q 'm.timeLabel.text = "LIVE"' components/screens/PlayerScreen.brs
-grep -q "No playable video is available" components/screens/VideoDetailScreen.xml
+grep -q "Видео недоступно" components/screens/VideoDetailScreen.brs
 grep -q 'field id="playbackRequested"' components/screens/VideoDetailScreen.xml
 grep -q 'field id="playbackError"' components/screens/VideoDetailScreen.xml
-grep -q "playbackPayloadForMedia" components/screens/VideoDetailScreen.brs
-grep -q "episodeWatchStatus" components/screens/VideoDetailScreen.brs
-grep -q "episodeProgressText" components/screens/VideoDetailScreen.brs
-grep -q 'id="descriptionFocusBg"' components/screens/VideoDetailScreen.xml
-grep -q 'id="descriptionOverlayGroup"' components/screens/VideoDetailScreen.xml
-grep -q 'id="bookmarkActionGroup"' components/screens/VideoDetailScreen.xml
+grep -q "videoDetailScreenPlaybackPayloadForMedia" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenEpisodeWatchStatus" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenEpisodeProgressText" components/screens/VideoDetailScreen.brs
 grep -q 'id="bookmarkOverlayGroup"' components/screens/VideoDetailScreen.xml
-grep -q "loadItemBookmarkFolders" components/screens/VideoDetailScreen.brs
-grep -q "toggleSelectedBookmarkFolder" components/screens/VideoDetailScreen.brs
-grep -q 'id="descriptionOverlayTextLabel"' components/screens/VideoDetailScreen.xml
-grep -q 'id="descriptionOverlayScrollUpChevron"' components/screens/VideoDetailScreen.xml
-grep -q 'id="descriptionOverlayScrollDownChevron"' components/screens/VideoDetailScreen.xml
-grep -q "m.descriptionFocusBg" components/screens/VideoDetailScreen.brs
-grep -q "m.descriptionOverlayGroup" components/screens/VideoDetailScreen.brs
-grep -q "m.descriptionOverlayTextLabel" components/screens/VideoDetailScreen.brs
-grep -q "m.descriptionOverlayScrollStart" components/screens/VideoDetailScreen.brs
-grep -q "sub openDescriptionOverlay" components/screens/VideoDetailScreen.brs
-grep -q "sub closeDescriptionOverlay" components/screens/VideoDetailScreen.brs
-grep -q "sub scrollDescriptionOverlay" components/screens/VideoDetailScreen.brs
-grep -q "function descriptionOverlayLines" components/screens/VideoDetailScreen.brs
-grep -q "sub updateDescriptionFocusVisual" components/screens/VideoDetailScreen.brs
-grep -q 'if m.descriptionOverlayGroup.visible' components/screens/VideoDetailScreen.brs
-grep -q 'openDescriptionOverlay()' components/screens/VideoDetailScreen.brs
-grep -q 'm.focusArea = "description"' components/screens/VideoDetailScreen.brs
-grep -q "appendWatchedCheck" components/screens/VideoDetailScreen.brs
-grep -q "progressText = episodeProgressText(episode)" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenLoadItemBookmarkFolders" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenToggleSelectedBookmarkFolder" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenOpenBookmarkOverlay" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenCloseBookmarkOverlay" components/screens/VideoDetailScreen.brs
+grep -q "if m.bookmarkOverlayOpen" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenAppendWatchedCheck" components/screens/VideoDetailScreen.brs
+grep -q "progressText = videoDetailScreenEpisodeProgressText(episode)" components/screens/VideoDetailScreen.brs
 grep -q "watchStatus: media.watchStatus" components/screens/VideoDetailScreen.brs
 grep -q "m.top.playbackRequested" components/screens/VideoDetailScreen.brs
 grep -q 'mediaLinks: kinoItemMediaLinks' source/services/KinoItemService.brs
@@ -672,11 +647,11 @@ grep -q 'command = "refreshMediaLinks"' components/tasks/ContentTask.brs
 grep -q 'contentTaskRefreshMediaLinks' components/tasks/ContentTask.brs
 grep -q 'itemService.mediaLinks(tokenResult.accessToken, media)' components/tasks/ContentTask.brs
 grep -q 'm.pendingPlaybackMediaId = 0' components/screens/VideoDetailScreen.brs
-grep -q 'm.playbackErrorLabel.text = "Preparing video..."' components/screens/VideoDetailScreen.brs
+grep -q 'videoDetailScreenSetStatusMessage("Подготовка видео...")' components/screens/VideoDetailScreen.brs
 grep -q 'task.command = "refreshMediaLinks"' components/screens/VideoDetailScreen.brs
 grep -q 'sub onMediaLinksRefreshResponse' components/screens/VideoDetailScreen.brs
 grep -q 'm.top.playbackRequested = fallbackPayload' components/screens/VideoDetailScreen.brs
-grep -q "m.posterFallback.visible = true" components/screens/VideoDetailScreen.brs
+grep -q "m.backdropPoster.visible = heroImage" components/screens/VideoDetailScreen.brs
 grep -q "showPlayerScreen" components/AppScene.brs
 grep -q "onPlaybackRequested" components/AppScene.brs
 grep -q "onPlayerExitRequested" components/AppScene.brs
@@ -689,7 +664,7 @@ grep -q "targetSeasonNumber" components/AppScene.brs
 grep -q "targetEpisodeNumber" components/AppScene.brs
 grep -q "targetSeasonNumber" components/tasks/ContentTask.brs
 grep -q "targetEpisodeNumber" components/tasks/ContentTask.brs
-grep -q "selectTargetEpisodeFromResponse" components/screens/VideoDetailScreen.brs
+grep -q "videoDetailScreenSelectTargetEpisodeFromResponse" components/screens/VideoDetailScreen.brs
 grep -q "PlayerScreen" components/AppScene.brs
 grep -q 'playerScreen.id = "playerScreen"' components/AppScene.brs
 grep -q 'removeScreenHostChild("playerScreen")' components/AppScene.brs
@@ -1029,7 +1004,7 @@ unzip -p dist/kinopub.zip components/screens/HomeScreen.brs | grep 'function men
 unzip -p dist/kinopub.zip components/screens/HomeScreen.brs | grep 'm.top.livePlaybackSelected' >/dev/null
 unzip -p dist/kinopub.zip components/screens/HomeScreen.brs | grep "appendTypeBadge" >/dev/null
 unzip -p dist/kinopub.zip components/screens/HomeScreen.xml | grep -q "searchKeyboardGroup"
-unzip -p dist/kinopub.zip components/screens/VideoDetailScreen.brs | grep -q "Preparing video..."
+unzip -p dist/kinopub.zip components/screens/VideoDetailScreen.brs | grep -q "Подготовка видео..."
 
 bash scripts/tests/player-track-dedupe.sh
 bash scripts/tests/player-audio-selection.sh

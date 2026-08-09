@@ -1,83 +1,126 @@
+' Video detail screen — full-bleed hero (backdrop art, title, description,
+' Play/Trailer/Bookmark action stack) with a below-hero region that shows
+' EITHER a "Сезоны" row of poster-card tiles OR the active season's episode
+' list, never both at once (see videoDetailScreenApplySectionVisibility) —
+' matching the reference app's flow, where selecting a season opens a
+' dedicated episode view rather than an inline expansion.
+'
+' This is a full rewrite of the previous dark, split-panel screen. The
+' interface (8 fields below) is byte-identical to before — AppScene.brs
+' needs no changes. Data loading, the "auto-focus first unwatched episode"
+' priority scan, Play/Trailer preflight payloads, the next-episode/in-player
+' season-carousel contract (onNextPlaybackRequested and everything it calls),
+' and the bookmark-folder overlay are ported from the old file with the same
+' behavior, restyled to the light theme. Dropped in this pass: the modal
+' "read full description" overlay, the recommendations ("Similar") rail, and
+' the detailed tech-info panel — see CHANGELOG/the design plan for why.
+'
+' All top-level helpers are prefixed videoDetailScreen* — see
+' BrowseScreen.brs's header comment for why (every sub/function in this
+' channel is global regardless of which component's <script> tags loaded it;
+' init()/onKeyEvent()/observeField-callback names are the exception). The
+' old file used unprefixed names; fixed as part of this rewrite.
+
 sub init()
     m.loadingGroup = m.top.findNode("loadingGroup")
     m.errorGroup = m.top.findNode("errorGroup")
     m.errorLabel = m.top.findNode("errorLabel")
-    m.retryFocusBg = m.top.findNode("retryFocusBg")
     m.detailGroup = m.top.findNode("detailGroup")
-    m.heroArtworkPoster = m.top.findNode("heroArtworkPoster")
-    m.poster = m.top.findNode("poster")
-    m.posterFallback = m.top.findNode("posterFallback")
-    m.detailFactsGroup = m.top.findNode("detailFactsGroup")
-    m.detailFactsHost = m.top.findNode("detailFactsHost")
-    m.titleLabel = m.top.findNode("titleLabel")
-    m.metadataLabel = m.top.findNode("metadataLabel")
-    m.historyMetaGroup = m.top.findNode("historyMetaGroup")
-    m.historyMetaLabel = m.top.findNode("historyMetaLabel")
+    m.detailScrollHost = m.top.findNode("detailScrollHost")
+
+    m.backdropPoster = m.top.findNode("backdropPoster")
+    m.heroTitleLabel = m.top.findNode("heroTitleLabel")
+    m.heroMetaLabel = m.top.findNode("heroMetaLabel")
+    m.heroBadgesHost = m.top.findNode("heroBadgesHost")
     m.descriptionFocusBg = m.top.findNode("descriptionFocusBg")
-    m.descriptionLabel = m.top.findNode("descriptionLabel")
-    m.playFocusBg = m.top.findNode("playFocusBg")
-    m.playButtonLabel = m.top.findNode("playButtonLabel")
-    m.bookmarkActionGroup = m.top.findNode("bookmarkActionGroup")
-    m.bookmarkFocusBg = m.top.findNode("bookmarkFocusBg")
-    m.bookmarkLabel = m.top.findNode("bookmarkLabel")
+    m.heroDescriptionLabel = m.top.findNode("heroDescriptionLabel")
+    m.heroActionsHost = m.top.findNode("heroActionsHost")
     m.playbackErrorLabel = m.top.findNode("playbackErrorLabel")
-    m.panelTitleLabel = m.top.findNode("panelTitleLabel")
-    m.seasonTabsHost = m.top.findNode("seasonTabsHost")
-    m.episodeListHost = m.top.findNode("episodeListHost")
-    m.episodeCursor = m.top.findNode("episodeCursor")
-    m.episodeScrollUpChevron = m.top.findNode("episodeScrollUpChevron")
-    m.episodeScrollDownChevron = m.top.findNode("episodeScrollDownChevron")
-    m.noMediaLabel = m.top.findNode("noMediaLabel")
-    m.trailerGroup = m.top.findNode("trailerGroup")
-    m.trailerFocusBg = m.top.findNode("trailerFocusBg")
-    m.trailerLabel = m.top.findNode("trailerLabel")
-    m.similarGroup = m.top.findNode("similarGroup")
-    m.similarHost = m.top.findNode("similarHost")
-    m.similarCursor = m.top.findNode("similarCursor")
+
     m.descriptionOverlayGroup = m.top.findNode("descriptionOverlayGroup")
+    m.descriptionOverlayTitleLabel = m.top.findNode("descriptionOverlayTitleLabel")
     m.descriptionOverlayTextLabel = m.top.findNode("descriptionOverlayTextLabel")
-    m.descriptionOverlayScrollUpChevron = m.top.findNode("descriptionOverlayScrollUpChevron")
-    m.descriptionOverlayScrollDownChevron = m.top.findNode("descriptionOverlayScrollDownChevron")
+
+    m.contentSection = m.top.findNode("contentSection")
+    m.contentHost = m.top.findNode("contentHost")
+    m.contentClipHost = m.top.findNode("contentClipHost")
+    m.episodesSection = m.top.findNode("episodesSection")
+    m.episodesHeadingLabel = m.top.findNode("episodesHeadingLabel")
+    m.episodesHost = m.top.findNode("episodesHost")
+    m.episodesClipHost = m.top.findNode("episodesClipHost")
+    m.noMediaLabel = m.top.findNode("noMediaLabel")
+
     m.bookmarkOverlayGroup = m.top.findNode("bookmarkOverlayGroup")
     m.bookmarkOverlayStatusLabel = m.top.findNode("bookmarkOverlayStatusLabel")
     m.bookmarkOverlayFoldersHost = m.top.findNode("bookmarkOverlayFoldersHost")
 
+    ' Content row list (seasons tiles / recommendations rail / ratings /
+    ' tech info), stacked vertically below the hero and scrolled into view
+    ' exactly like the episode list (flat render + animated
+    ' translation) — see videoDetailScreenRenderContent. Rail-type rows
+    ' (seasons/recommendations) reuse the same clip-padding trick as
+    ' BrowseScreen.brs's grid for their createPosterCard tiles' focus-pop
+    ' scale effect. The clip starts above the below-hero boundary (-railPad,
+    ' not 0) since — unlike Stage 1's single always-visible "Сезоны" label —
+    ' there's no static heading outside the clip to avoid overlapping; every
+    ' row (headings included) is built fully at runtime inside contentHost.
+    m.railCardWidth = 170
+    m.railCardGapX = 22
+    m.railPad = 44
+    m.maxVisibleRailTiles = 6
+    m.railContentWidth = (m.railCardWidth * m.maxVisibleRailTiles) + (m.railCardGapX * (m.maxVisibleRailTiles - 1))
+    m.contentViewportHeight = 340
+    m.contentClipHost.translation = [64 - m.railPad, -m.railPad]
+    m.contentClipHost.clippingRect = [0, 0, m.railContentWidth + (m.railPad * 2), m.contentViewportHeight + (m.railPad * 2)]
+    m.contentHost.translation = [m.railPad, m.railPad]
+    m.contentScrollOffsetY = 0
+    m.contentScrollAnimation = invalid
+    m.contentScrollInterpolator = invalid
+    m.contentRows = []
+    m.contentRowIndex = 0
+
+    ' Episode list: flat render, scrolled into view via animated translation
+    ' on episodesHost (ContinueScreen.brs's continueScreenScrollGridToFocus
+    ' pattern) — no per-row scale effect here, so no clip padding needed.
+    m.episodeRowStep = 84
+    m.episodesViewportHeightDefault = 284
+    ' Once inside the episode list, the whole page (detailGroup, hero
+    ' included) scrolls up by the hero's full height so the list gets nearly
+    ' the whole screen instead of just the ~284px strip below a permanently
+    ' pinned hero — see videoDetailScreenSetHeroScrolled.
+    m.episodesViewportHeightExpanded = 640
+    m.episodesViewportHeight = m.episodesViewportHeightDefault
+    m.episodesClipHost.translation = [64, 56]
+    m.episodesClipHost.clippingRect = [0, 0, 1152, m.episodesViewportHeight]
+    m.episodesHost.translation = [0, 0]
+    m.heroScrollOffset = 380
+    m.heroScrolled = false
+    m.heroScrollAnimation = invalid
+    m.heroScrollInterpolator = invalid
+
     m.selection = invalid
     m.item = invalid
     m.trailer = invalid
-    m.similarItems = []
+    m.isSeries = false
+    m.hasSeasonsRow = false
     m.seasons = []
     m.currentSeasonIndex = 0
     m.currentEpisodeIndex = 0
-    m.focusArea = "episodes"
-    m.episodeRows = []
-    m.episodeRowIndexes = []
-    m.seasonTabBgs = []
-    m.visibleEpisodeStart = 0
-    m.defaultMaxVisibleEpisodes = 6
-    m.maxVisibleEpisodes = m.defaultMaxVisibleEpisodes
-    m.seasonTabWidth = 78
-    m.seasonTabHeight = 38
-    m.seasonTabGap = 14
-    m.seasonTabRowHeight = 48
-    m.seasonTabPanelWidth = 380
-    m.baseEpisodeListY = 104
-    m.episodeListY = m.baseEpisodeListY
-    m.episodeListBottomY = 604
-    m.descriptionOverlayScrollStart = 0
-    m.descriptionOverlayMaxLines = 11
-    m.descriptionOverlayLineLength = 76
-    m.selectedSimilarIndex = 0
-    m.similarCardWidth = 118
-    m.similarCardSpacing = 130
-    m.maxVisibleSimilarItems = 3
+    m.focusArea = "actions"
+    m.selectedActionIndex = 0
+    m.actionRows = []
+    m.episodeRowNodes = []
+    m.episodesScrollOffsetY = 0
+    m.episodesScrollAnimation = invalid
+    m.episodesScrollInterpolator = invalid
+
     m.bookmarkFolders = []
     m.itemBookmarkFolders = []
-    m.bookmarkOverlayRows = []
-    m.bookmarkOverlayRowBgs = []
+    m.bookmarkOverlayRowNodes = []
     m.selectedBookmarkFolderIndex = 0
     m.bookmarkOverlayOpen = false
-    m.bookmarkStatusMessage = ""
+    m.descriptionOverlayOpen = false
+
     m.pendingPlaybackMediaId = 0
     m.pendingPlaybackPayload = invalid
     m.pendingNextPlaybackMediaId = 0
@@ -91,58 +134,41 @@ sub init()
     m.top.setFocus(true)
 end sub
 
-function detailUiPalette() as Object
-    return {
-        background: "#090B0F"
-        surface: "#172033"
-        surfaceRaised: "#1E293B"
-        surfaceFocus: "#1D4ED8"
-        primary: "#2563EB"
-        primaryFocus: "#60A5FA"
-        primaryText: "#F8FAFC"
-        text: "#F8FAFC"
-        muted: "#9BA7BA"
-        success: "#34D399"
-        error: "#FCA5A5"
-    }
-end function
-
-function detailButtonColor(isFocused as Boolean, isPrimary as Boolean) as String
-    palette = detailUiPalette()
-    if isPrimary
-        if isFocused then return palette.primaryFocus
-        return palette.primary
-    end if
-    if isFocused then return palette.surfaceFocus
-    return palette.surface
-end function
-
 sub onSelectionChanged(event as Object)
     m.selection = event.getData()
-    loadDetail()
+    videoDetailScreenLoadDetail()
 end sub
 
 sub onReloadRequested(event as Object)
-    if event.getData() = true then loadDetail()
+    if event.getData() = true then videoDetailScreenLoadDetail()
 end sub
 
 sub onPlaybackError(event as Object)
     message = event.getData()
-    if message <> invalid and message <> "" then m.playbackErrorLabel.text = message
+    if message <> invalid and message <> "" then videoDetailScreenSetStatusMessage(message)
 end sub
 
-sub loadDetail()
+sub videoDetailScreenSetStatusMessage(text as String)
+    m.playbackErrorLabel.text = text
+    m.playbackErrorLabel.visible = text <> ""
+end sub
+
+' ---------------------------------------------------------------------------
+' Data load
+' ---------------------------------------------------------------------------
+
+sub videoDetailScreenLoadDetail()
     if m.selection = invalid or m.selection.itemId = invalid or m.selection.itemId <= 0
-        showError("Unable to open this video.")
+        videoDetailScreenShowError("Не удалось открыть это видео.")
         return
     end if
 
-    showState("loading")
+    videoDetailScreenShowState("loading")
     task = CreateObject("roSGNode", "ContentTask")
     task.command = "loadItemDetail"
     task.request = {
         itemId: m.selection.itemId
-        mediaId: selectedMediaId()
+        mediaId: videoDetailScreenSelectedMediaId()
     }
     if m.selection.DoesExist("targetSeasonNumber") then task.request.targetSeasonNumber = m.selection.targetSeasonNumber
     if m.selection.DoesExist("targetEpisodeNumber") then task.request.targetEpisodeNumber = m.selection.targetEpisodeNumber
@@ -156,43 +182,111 @@ end sub
 sub onDetailResponse(event as Object)
     response = event.getData()
     if response = invalid or response.ok <> true
-        if responseRequiresSignIn(response)
-            requestSignInAgain(response)
+        if videoDetailScreenResponseRequiresSignIn(response)
+            videoDetailScreenRequestSignInAgain(response)
             return
         end if
-        message = "Unable to load video details."
-        if response <> invalid and response.message <> invalid and response.message <> ""
-            message = response.message
-        end if
-        showError(message)
+        message = "Не удалось загрузить информацию о видео."
+        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
+        videoDetailScreenShowError(message)
         return
     end if
 
     if response.item = invalid
-        showError("Video details were not available.")
+        videoDetailScreenShowError("Информация о видео недоступна.")
         return
     end if
 
     m.item = response.item
     m.trailer = invalid
     if m.item.trailer <> invalid then m.trailer = m.item.trailer
-    m.similarItems = []
-    if m.item.similarItems <> invalid then m.similarItems = m.item.similarItems
-    m.selectedSimilarIndex = 0
-    cancelPlaybackPreflight()
-    buildPlayableModel()
-    m.focusArea = "episodes"
-    renderDetail()
-    loadItemBookmarkFolders()
-    showState("detail")
+    videoDetailScreenCancelPlaybackPreflight()
+    videoDetailScreenBuildPlayableModel()
+    m.isSeries = m.item.seasons <> invalid and m.item.seasons.Count() > 0
+    ' Folds in the rare multi-part-movie case (no real season data, but more
+    ' than one video) so it gets the same tile->dedicated-episode-view
+    ' treatment as a single-season serial, via the same seasons row in
+    ' videoDetailScreenRenderContent — instead of a separate direct
+    ' actions->episodes fallback, which would otherwise be unreachable now
+    ' that "content" (almost always available, at minimum the info row)
+    ' outranks it in the Down-from-actions priority chain.
+    m.hasSeasonsRow = m.isSeries or (m.seasons.Count() = 1 and videoDetailScreenPlayableEpisodesForSeason(0).Count() > 1)
+
+    m.focusArea = "actions"
+    m.selectedActionIndex = 0
+    m.contentRowIndex = 0
+    m.contentScrollOffsetY = 0
+    m.contentHost.translation = [m.railPad, m.railPad]
+    videoDetailScreenSetStatusMessage("")
+    m.heroScrolled = false
+    m.detailScrollHost.translation = [0, 0]
+    m.episodesViewportHeight = m.episodesViewportHeightDefault
+    m.episodesClipHost.clippingRect = [0, 0, 1152, m.episodesViewportHeight]
+    videoDetailScreenCloseDescriptionOverlay()
+
+    videoDetailScreenRenderHero()
+    videoDetailScreenRenderActions()
+    videoDetailScreenRenderContent()
+    videoDetailScreenRenderEpisodes()
+    videoDetailScreenApplySectionVisibility()
+    videoDetailScreenUpdateDescriptionFocus()
+    videoDetailScreenLoadItemBookmarkFolders()
+    videoDetailScreenShowState("detail")
 end sub
 
-function selectedMediaId() as Integer
+function videoDetailScreenSelectedMediaId() as Integer
     if m.selection = invalid or m.selection.mediaId = invalid then return 0
     return m.selection.mediaId
 end function
 
-sub buildPlayableModel()
+sub videoDetailScreenShowState(state as String)
+    m.loadingGroup.visible = state = "loading"
+    m.errorGroup.visible = state = "error"
+    m.detailGroup.visible = state = "detail"
+end sub
+
+sub videoDetailScreenShowError(message as String)
+    m.errorLabel.text = message
+    videoDetailScreenShowState("error")
+end sub
+
+function videoDetailScreenResponseRequiresSignIn(response as Dynamic) as Boolean
+    if response = invalid or type(response) <> "roAssociativeArray" then return false
+    if response.DoesExist("status") and response.status <> invalid and response.status = 401 then return true
+    if response.DoesExist("error") <> true or response.error = invalid then return false
+    errorCode = response.error
+    if type(errorCode) <> "String" and type(errorCode) <> "roString" then return false
+    errorCode = LCase(errorCode)
+    return errorCode = "auth_required" or errorCode = "unauthorized" or errorCode = "invalid_grant"
+end function
+
+sub videoDetailScreenRequestSignInAgain(response as Dynamic)
+    m.top.authRequired = true
+end sub
+
+function videoDetailScreenIntegerField(source as Dynamic, key as String, fallback as Integer) as Integer
+    if source = invalid or type(source) <> "roAssociativeArray" then return fallback
+    if source.DoesExist(key) <> true or source[key] = invalid then return fallback
+    value = source[key]
+    valueType = type(value)
+    if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value
+    if valueType = "Float" or valueType = "Double" or valueType = "roFloat" or valueType = "roDouble" then return Int(value)
+    return fallback
+end function
+
+' ---------------------------------------------------------------------------
+' Playable model — which season/episode is "active", and the auto-focus
+' "first unwatched" priority scan. Ported verbatim from the old file's
+' buildPlayableModel/selectTargetEpisodeFromResponse.
+' ---------------------------------------------------------------------------
+
+function videoDetailScreenPlayableEpisodesForSeason(seasonIndex as Integer) as Object
+    if seasonIndex < 0 or seasonIndex >= m.seasons.Count() then return []
+    if m.seasons[seasonIndex].episodes = invalid then return []
+    return m.seasons[seasonIndex].episodes
+end function
+
+sub videoDetailScreenBuildPlayableModel()
     m.seasons = []
 
     if m.item = invalid
@@ -208,22 +302,17 @@ sub buildPlayableModel()
     else
         videos = []
         if m.item.videos <> invalid then videos = m.item.videos
-        m.seasons.Push({
-            title: "Video"
-            number: 0
-            episodes: videos
-        })
+        m.seasons.Push({ title: "Видео", number: 0, episodes: videos })
     end if
 
     m.currentSeasonIndex = 0
     m.currentEpisodeIndex = 0
-    if selectTargetEpisodeFromResponse(m.selection) then return
-    targetMediaId = selectedMediaId()
+    if videoDetailScreenSelectTargetEpisodeFromResponse(m.selection) then return
+    targetMediaId = videoDetailScreenSelectedMediaId()
 
     if targetMediaId > 0
         for seasonIndex = 0 to m.seasons.Count() - 1
-            episodes = playableEpisodesForSeason(seasonIndex)
-
+            episodes = videoDetailScreenPlayableEpisodesForSeason(seasonIndex)
             for episodeIndex = 0 to episodes.Count() - 1
                 if episodes[episodeIndex].mediaId = targetMediaId
                     m.currentSeasonIndex = seasonIndex
@@ -235,8 +324,7 @@ sub buildPlayableModel()
     end if
 
     for seasonIndex = 0 to m.seasons.Count() - 1
-        episodes = playableEpisodesForSeason(seasonIndex)
-
+        episodes = videoDetailScreenPlayableEpisodesForSeason(seasonIndex)
         for episodeIndex = 0 to episodes.Count() - 1
             episode = episodes[episodeIndex]
             if episode.isPlayable = true and episode.watched <> true
@@ -248,8 +336,7 @@ sub buildPlayableModel()
     end for
 
     for seasonIndex = 0 to m.seasons.Count() - 1
-        episodes = playableEpisodesForSeason(seasonIndex)
-
+        episodes = videoDetailScreenPlayableEpisodesForSeason(seasonIndex)
         for episodeIndex = 0 to episodes.Count() - 1
             if episodes[episodeIndex].isPlayable = true
                 m.currentSeasonIndex = seasonIndex
@@ -260,21 +347,21 @@ sub buildPlayableModel()
     end for
 end sub
 
-function selectTargetEpisodeFromResponse(response as Dynamic) as Boolean
+function videoDetailScreenSelectTargetEpisodeFromResponse(response as Dynamic) as Boolean
     if response = invalid or type(response) <> "roAssociativeArray" then return false
 
     targetSeasonNumber = 0
     targetEpisodeNumber = 0
-    if response.DoesExist("targetSeasonNumber") then targetSeasonNumber = detailIntegerField(response, "targetSeasonNumber", 0)
-    if response.DoesExist("targetEpisodeNumber") then targetEpisodeNumber = detailIntegerField(response, "targetEpisodeNumber", 0)
-    if targetSeasonNumber <= 0 and response.DoesExist("seasonNumber") then targetSeasonNumber = detailIntegerField(response, "seasonNumber", 0)
-    if targetEpisodeNumber <= 0 and response.DoesExist("episodeNumber") then targetEpisodeNumber = detailIntegerField(response, "episodeNumber", 0)
+    if response.DoesExist("targetSeasonNumber") then targetSeasonNumber = videoDetailScreenIntegerField(response, "targetSeasonNumber", 0)
+    if response.DoesExist("targetEpisodeNumber") then targetEpisodeNumber = videoDetailScreenIntegerField(response, "targetEpisodeNumber", 0)
+    if targetSeasonNumber <= 0 and response.DoesExist("seasonNumber") then targetSeasonNumber = videoDetailScreenIntegerField(response, "seasonNumber", 0)
+    if targetEpisodeNumber <= 0 and response.DoesExist("episodeNumber") then targetEpisodeNumber = videoDetailScreenIntegerField(response, "episodeNumber", 0)
     if targetSeasonNumber <= 0 and targetEpisodeNumber <= 0 then return false
 
     for seasonIndex = 0 to m.seasons.Count() - 1
         season = m.seasons[seasonIndex]
         if targetSeasonNumber <= 0 or season.number = targetSeasonNumber
-            episodes = playableEpisodesForSeason(seasonIndex)
+            episodes = videoDetailScreenPlayableEpisodesForSeason(seasonIndex)
             for episodeIndex = 0 to episodes.Count() - 1
                 episode = episodes[episodeIndex]
                 if targetEpisodeNumber <= 0 or episode.episodeNumber = targetEpisodeNumber
@@ -289,23 +376,26 @@ function selectTargetEpisodeFromResponse(response as Dynamic) as Boolean
     return false
 end function
 
-function detailIntegerField(source as Dynamic, key as String, fallback as Integer) as Integer
-    if source = invalid or type(source) <> "roAssociativeArray" then return fallback
-    if source.DoesExist(key) <> true or source[key] = invalid then return fallback
-    value = source[key]
-    valueType = type(value)
-    if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value
-    if valueType = "Float" or valueType = "Double" or valueType = "roFloat" or valueType = "roDouble" then return Int(value)
-    return fallback
+function videoDetailScreenCurrentMedia() as Dynamic
+    if m.seasons.Count() = 0 then return invalid
+    if m.currentSeasonIndex < 0 then m.currentSeasonIndex = 0
+    if m.currentSeasonIndex >= m.seasons.Count() then m.currentSeasonIndex = m.seasons.Count() - 1
+
+    episodes = []
+    if m.seasons[m.currentSeasonIndex].episodes <> invalid then episodes = m.seasons[m.currentSeasonIndex].episodes
+    if episodes.Count() = 0 then return invalid
+
+    if m.currentEpisodeIndex < 0 then m.currentEpisodeIndex = 0
+    if m.currentEpisodeIndex >= episodes.Count() then m.currentEpisodeIndex = episodes.Count() - 1
+
+    return episodes[m.currentEpisodeIndex]
 end function
 
-function playableEpisodesForSeason(seasonIndex as Integer) as Object
-    if seasonIndex < 0 or seasonIndex >= m.seasons.Count() then return []
-    if m.seasons[seasonIndex].episodes = invalid then return []
-    return m.seasons[seasonIndex].episodes
-end function
+' ---------------------------------------------------------------------------
+' Hero (title/metadata/badges/description/backdrop)
+' ---------------------------------------------------------------------------
 
-sub renderDetail()
+sub videoDetailScreenRenderHero()
     title = ""
     metadata = []
     description = ""
@@ -318,300 +408,209 @@ sub renderDetail()
     if m.item.backdropUrl <> invalid then backdropUrl = m.item.backdropUrl
     if m.item.posterUrl <> invalid then posterUrl = m.item.posterUrl
 
-    m.titleLabel.text = title
-    m.metadataLabel.text = joinMetadata(metadata)
-    m.descriptionLabel.text = description
-    renderHistoryMetadata()
-    renderDetailFacts()
-    closeDescriptionOverlay()
-    m.heroArtworkPoster.uri = backdropUrl
-    m.heroArtworkPoster.visible = backdropUrl <> ""
-    m.poster.uri = posterUrl
-    m.poster.visible = posterUrl <> ""
-    m.posterFallback.visible = true
-    m.playbackErrorLabel.text = ""
+    m.heroTitleLabel.text = title
+    m.heroMetaLabel.text = videoDetailScreenJoinMetadata(metadata)
+    m.heroDescriptionLabel.text = description
 
-    applyDetailExtrasLayout()
-    renderSeasonTabs()
-    renderEpisodeList()
-    renderDetailExtras()
-    updateSelectedMediaVisuals()
-    updateDescriptionFocusVisual()
-    updateDetailExtrasFocusVisuals()
+    heroImage = backdropUrl
+    if heroImage = "" then heroImage = posterUrl
+    m.backdropPoster.uri = heroImage
+    m.backdropPoster.visible = heroImage <> ""
+
+    videoDetailScreenRenderBadges()
 end sub
 
-sub renderDetailFacts()
-    if m.detailFactsGroup = invalid or m.detailFactsHost = invalid then return
-
-    childCount = m.detailFactsHost.getChildCount()
-    if childCount > 0 then m.detailFactsHost.removeChildrenIndex(childCount, 0)
-
-    if m.item = invalid
-        m.detailFactsGroup.visible = false
-        return
+' Description is a focus stop above the action stack (Up from Play) —
+' highlighted via descriptionFocusBg (a Rectangle behind the label, opacity
+' toggled here) since the label itself has no natural "button" chrome.
+sub videoDetailScreenUpdateDescriptionFocus()
+    if m.focusArea = "description"
+        m.descriptionFocusBg.opacity = 0.18
+    else
+        m.descriptionFocusBg.opacity = 0
     end if
-    if m.item.detailFacts = invalid or type(m.item.detailFacts) <> "roArray" or m.item.detailFacts.Count() = 0
-        m.detailFactsGroup.visible = false
-        return
-    end if
+end sub
 
-    maxRows = m.item.detailFacts.Count()
-    if maxRows > 7 then maxRows = 7
+' Full-text "semiwindow" overlay — same "dialog never takes real focus"
+' pattern as the bookmark overlay (see its header comment): the screen keeps
+' focus throughout, checks m.descriptionOverlayOpen at the top of its own
+' onKeyEvent, and Back/OK both close it, returning to whatever m.focusArea
+' already was (never changed while the overlay is open).
+sub videoDetailScreenOpenDescriptionOverlay()
+    description = ""
+    if m.item <> invalid and m.item.description <> invalid then description = m.item.description
+    if description = "" then return
 
-    for index = 0 to maxRows - 1
-        m.detailFactsHost.appendChild(createDetailFactRow(m.item.detailFacts[index], index))
+    title = ""
+    if m.item <> invalid and m.item.title <> invalid then title = m.item.title
+
+    m.descriptionOverlayTitleLabel.text = title
+    m.descriptionOverlayTextLabel.text = description
+    m.descriptionOverlayGroup.visible = true
+    m.descriptionOverlayOpen = true
+end sub
+
+sub videoDetailScreenCloseDescriptionOverlay()
+    m.descriptionOverlayGroup.visible = false
+    m.descriptionOverlayOpen = false
+end sub
+
+function videoDetailScreenJoinMetadata(values as Dynamic) as String
+    if values = invalid or values.Count() = 0 then return ""
+    text = ""
+    for index = 0 to values.Count() - 1
+        if values[index] <> invalid and values[index] <> ""
+            if text <> "" then text = text + "  |  "
+            text = text + values[index]
+        end if
+    end for
+    return text
+end function
+
+' Small "4K"/"CC"/"AC3"/"FINISHED"-style chips, derived client-side from
+' item.detailFacts (already built server-side by KinoItemService) — no
+' service change needed.
+sub videoDetailScreenRenderBadges()
+    childCount = m.heroBadgesHost.getChildCount()
+    if childCount > 0 then m.heroBadgesHost.removeChildrenIndex(childCount, 0)
+
+    chips = []
+    facts = []
+    if m.item <> invalid and m.item.detailFacts <> invalid then facts = m.item.detailFacts
+
+    for each fact in facts
+        if fact.label = "Quality"
+            chip = videoDetailScreenQualityChipText(fact.value)
+            if chip <> "" then chips.Push(chip)
+        else if fact.label = "Tracks"
+            if Instr(1, fact.value, "AC-3") > 0 then chips.Push("AC3")
+            if Instr(1, fact.value, "subtitles") > 0 then chips.Push("CC")
+        else if fact.label = "Series"
+            if fact.value = "Finished" then chips.Push("FINISHED")
+        end if
     end for
 
-    m.detailFactsGroup.visible = true
+    x = 0
+    for each chipText in chips
+        width = Len(chipText) * 11 + 20
+
+        bg = CreateObject("roSGNode", "Rectangle")
+        bg.translation = [x, 0]
+        bg.width = width
+        bg.height = 24
+        bg.color = "#FFFFFF"
+        bg.opacity = 0.16
+        m.heroBadgesHost.appendChild(bg)
+
+        label = CreateObject("roSGNode", "Label")
+        label.text = chipText
+        label.translation = [x + 10, 3]
+        label.width = width - 20
+        label.height = 18
+        label.color = "#FFFFFF"
+        label.font.size = 14
+        m.heroBadgesHost.appendChild(label)
+
+        x = x + width + 8
+    end for
 end sub
 
-function createDetailFactRow(fact as Object, index as Integer) as Object
-    palette = detailUiPalette()
-    row = CreateObject("roSGNode", "Group")
-    row.translation = [0, index * 32]
-
-    label = CreateObject("roSGNode", "Label")
-    label.text = fact.label
-    label.width = 96
-    label.color = palette.muted
-    row.appendChild(label)
-
-    value = CreateObject("roSGNode", "Label")
-    value.text = fact.value
-    value.translation = [108, 0]
-    value.width = 340
-    value.color = "#D1D5DB"
-    row.appendChild(value)
-
-    return row
+function videoDetailScreenQualityChipText(quality as Dynamic) as String
+    if quality = invalid or type(quality) <> "String" and type(quality) <> "roString" then return ""
+    q = LCase(quality)
+    if Instr(1, q, "2160") > 0 then return "4K"
+    if Instr(1, q, "1440") > 0 then return "QHD"
+    if Instr(1, q, "1080") > 0 then return "FHD"
+    if Instr(1, q, "720") > 0 then return "HD"
+    return UCase(quality)
 end function
 
-sub renderHistoryMetadata()
-    if m.historyMetaGroup = invalid or m.historyMetaLabel = invalid then return
+' ---------------------------------------------------------------------------
+' Actions (Play / Trailer / Bookmark)
+' ---------------------------------------------------------------------------
 
-    text = historyMetadataText()
-    if text = ""
-        applyHistoryMetadataLayout(false)
-        m.historyMetaGroup.visible = false
-        m.historyMetaLabel.text = ""
-        return
-    end if
+sub videoDetailScreenRenderActions()
+    childCount = m.heroActionsHost.getChildCount()
+    if childCount > 0 then m.heroActionsHost.removeChildrenIndex(childCount, 0)
+    m.actionRows = []
 
-    applyHistoryMetadataLayout(true)
-    m.historyMetaLabel.text = text
-    m.historyMetaGroup.visible = true
+    rows = [{ id: "play", label: videoDetailScreenPlayLabel() }]
+    if videoDetailScreenHasPlayableTrailer() then rows.Push({ id: "trailer", label: "▶  Трейлер" })
+    rows.Push({ id: "bookmark", label: videoDetailScreenBookmarkLabel() })
+
+    rowHeight = 46
+    rowGap = 10
+    rowWidth = 260
+
+    for i = 0 to rows.Count() - 1
+        row = rows[i]
+        y = i * (rowHeight + rowGap)
+
+        group = CreateObject("roSGNode", "Group")
+        group.translation = [0, y]
+
+        bg = CreateObject("roSGNode", "Rectangle")
+        bg.width = rowWidth
+        bg.height = rowHeight
+        bg.color = "#FFFFFF"
+        bg.opacity = 0.14
+        group.appendChild(bg)
+
+        label = CreateObject("roSGNode", "Label")
+        label.text = row.label
+        label.translation = [16, 13]
+        label.width = rowWidth - 32
+        label.height = 20
+        label.color = "#FFFFFF"
+        group.appendChild(label)
+
+        m.heroActionsHost.appendChild(group)
+        m.actionRows.Push({ id: row.id, group: group, bg: bg, label: label })
+    end for
+
+    if m.selectedActionIndex >= m.actionRows.Count() then m.selectedActionIndex = 0
+    videoDetailScreenUpdateActionsFocus()
 end sub
 
-sub applyHistoryMetadataLayout(hasHistoryMetadata as Boolean)
-    if m.descriptionFocusBg = invalid or m.descriptionLabel = invalid then return
-
-    if hasHistoryMetadata
-        m.descriptionFocusBg.translation = [-10, 424]
-        m.descriptionFocusBg.height = 102
-        m.descriptionLabel.translation = [0, 434]
-        m.descriptionLabel.height = 84
-    else
-        m.descriptionFocusBg.translation = [-10, 402]
-        m.descriptionFocusBg.height = 134
-        m.descriptionLabel.translation = [0, 412]
-        m.descriptionLabel.height = 112
+function videoDetailScreenPlayLabel() as String
+    media = videoDetailScreenCurrentMedia()
+    if media <> invalid and media.seasonNumber <> invalid and media.seasonNumber > 0
+        return "▶  Смотреть S" + StrI(media.seasonNumber).Trim() + "E" + StrI(media.episodeNumber).Trim()
     end if
+    return "▶  Смотреть"
+end function
+
+function videoDetailScreenBookmarkLabel() as String
+    count = 0
+    if m.itemBookmarkFolders <> invalid then count = m.itemBookmarkFolders.Count()
+    if count > 0 then return "♥  В закладках (" + StrI(count).Trim() + ")"
+    return "♡  В закладки"
+end function
+
+sub videoDetailScreenUpdateActionsFocus()
+    theme = UiThemeLight()
+    for i = 0 to m.actionRows.Count() - 1
+        row = m.actionRows[i]
+        isFocused = (i = m.selectedActionIndex) and (m.focusArea = "actions")
+        if isFocused
+            row.bg.color = theme.focusBorder
+            row.bg.opacity = 0.9
+        else
+            row.bg.color = "#FFFFFF"
+            row.bg.opacity = 0.14
+        end if
+    end for
 end sub
 
-function historyMetadataText() as String
-    if m.selection = invalid then return ""
-
-    watchCount = selectionIntegerField("watchCount", 0)
-    firstSeenSeconds = selectionIntegerField("firstSeenSeconds", 0)
-    lastSeenSeconds = selectionIntegerField("lastSeenSeconds", 0)
-    if watchCount <= 0 and firstSeenSeconds <= 0 and lastSeenSeconds <= 0 then return ""
-
-    parts = []
-    if watchCount > 0
-        countText = StrI(watchCount).Trim() + " watch"
-        if watchCount <> 1 then countText = countText + "es"
-        parts.Push(countText)
-    end if
-
-    if firstSeenSeconds > 0 then parts.Push("First " + formatHistoryDate(firstSeenSeconds))
-    if lastSeenSeconds > 0 then parts.Push("Last " + formatHistoryDate(lastSeenSeconds))
-
-    return joinMetadata(parts)
-end function
-
-function selectionIntegerField(key as String, fallback as Integer) as Integer
-    if m.selection = invalid or type(m.selection) <> "roAssociativeArray" then return fallback
-    if m.selection.DoesExist(key) <> true or m.selection[key] = invalid then return fallback
-
-    value = m.selection[key]
-    valueType = type(value)
-    if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value
-    if valueType = "Float" or valueType = "Double" or valueType = "roFloat" or valueType = "roDouble" then return Int(value)
-    return fallback
-end function
-
-function formatHistoryDate(seconds as Integer) as String
-    if seconds <= 0 then return ""
-
-    dateTime = CreateObject("roDateTime")
-    dateTime.FromSeconds(seconds)
-
-    monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    month = dateTime.GetMonth()
-    if month < 1 or month > 12 then return ""
-
-    return monthNames[month - 1] + " " + StrI(dateTime.GetDayOfMonth()).Trim() + ", " + StrI(dateTime.GetYear()).Trim()
-end function
-
-sub applyDetailExtrasLayout()
-    if hasDetailExtras()
-        m.episodeListBottomY = 422
-    else
-        m.episodeListBottomY = 604
-    end if
-end sub
-
-function hasDetailExtras() as Boolean
-    return hasPlayableTrailer() or hasSimilarItems()
-end function
-
-function hasPlayableTrailer() as Boolean
+function videoDetailScreenHasPlayableTrailer() as Boolean
     if m.trailer = invalid then return false
     if m.trailer.streamUrl = invalid or m.trailer.streamUrl = "" then return false
     return true
 end function
 
-function hasSimilarItems() as Boolean
-    return m.similarItems <> invalid and m.similarItems.Count() > 0
-end function
-
-sub renderDetailExtras()
-    renderTrailerAction()
-    renderSimilarItems()
-    updateDetailExtrasFocusVisuals()
-end sub
-
-sub renderTrailerAction()
-    if m.trailerGroup = invalid then return
-
-    if hasPlayableTrailer() <> true
-        m.trailerGroup.visible = false
-        return
-    end if
-
-    m.trailerLabel.text = "Play trailer"
-    m.trailerGroup.visible = true
-end sub
-
-sub renderSimilarItems()
-    if m.similarGroup = invalid or m.similarHost = invalid then return
-
-    childCount = m.similarHost.getChildCount()
-    if childCount > 0 then m.similarHost.removeChildrenIndex(childCount, 0)
-
-    if hasSimilarItems() <> true
-        m.similarGroup.visible = false
-        if m.similarCursor <> invalid then m.similarCursor.visible = false
-        return
-    end if
-
-    if m.selectedSimilarIndex < 0 then m.selectedSimilarIndex = 0
-    if m.selectedSimilarIndex >= m.similarItems.Count() then m.selectedSimilarIndex = m.similarItems.Count() - 1
-
-    lastIndex = m.maxVisibleSimilarItems - 1
-    if lastIndex >= m.similarItems.Count() then lastIndex = m.similarItems.Count() - 1
-
-    for index = 0 to lastIndex
-        m.similarHost.appendChild(createSimilarCard(m.similarItems[index], index))
-    end for
-
-    m.similarGroup.visible = true
-end sub
-
-function createSimilarCard(item as Object, index as Integer) as Object
-    palette = detailUiPalette()
-    card = CreateObject("roSGNode", "Group")
-    card.translation = [index * m.similarCardSpacing, 0]
-
-    bg = CreateObject("roSGNode", "Rectangle")
-    bg.width = 118
-    bg.height = 92
-    bg.color = palette.surface
-    card.appendChild(bg)
-
-    poster = CreateObject("roSGNode", "Poster")
-    poster.translation = [6, 6]
-    poster.width = 44
-    poster.height = 66
-    poster.uri = item.posterUrl
-    poster.loadDisplayMode = "scaleToFit"
-    card.appendChild(poster)
-
-    title = CreateObject("roSGNode", "Label")
-    title.text = item.title
-    title.translation = [56, 10]
-    title.width = 56
-    title.height = 38
-    title.wrap = true
-    title.color = palette.text
-    card.appendChild(title)
-
-    subtitle = CreateObject("roSGNode", "Label")
-    subtitle.text = item.subtitle
-    subtitle.translation = [56, 56]
-    subtitle.width = 56
-    subtitle.color = palette.muted
-    card.appendChild(subtitle)
-
-    return card
-end function
-
-sub updateDetailExtrasFocusVisuals()
-    palette = detailUiPalette()
-    if m.trailerFocusBg <> invalid
-        if m.focusArea = "trailer" and m.trailerGroup.visible = true
-            m.trailerFocusBg.color = detailButtonColor(true, false)
-            m.trailerLabel.color = palette.primaryText
-        else
-            m.trailerFocusBg.color = detailButtonColor(false, false)
-            m.trailerLabel.color = "#D1D5DB"
-        end if
-    end if
-
-    if m.similarCursor <> invalid
-        showCursor = m.focusArea = "similar" and m.similarGroup.visible = true and hasSimilarItems()
-        if showCursor
-            visibleIndex = m.selectedSimilarIndex
-            if visibleIndex >= m.maxVisibleSimilarItems then visibleIndex = m.maxVisibleSimilarItems - 1
-            m.similarCursor.translation = [visibleIndex * m.similarCardSpacing, 34]
-            m.similarCursor.visible = true
-        else
-            m.similarCursor.visible = false
-        end if
-    end if
-end sub
-
-function firstDetailExtrasFocusArea() as String
-    if hasPlayableTrailer() then return "trailer"
-    if hasSimilarItems() then return "similar"
-    return ""
-end function
-
-sub moveSimilar(delta as Integer)
-    if hasSimilarItems() <> true then return
-
-    nextIndex = m.selectedSimilarIndex + delta
-    if nextIndex < 0 then nextIndex = 0
-    maxIndex = m.similarItems.Count() - 1
-    if maxIndex >= m.maxVisibleSimilarItems then maxIndex = m.maxVisibleSimilarItems - 1
-    if nextIndex > maxIndex then nextIndex = maxIndex
-    m.selectedSimilarIndex = nextIndex
-    updateDetailExtrasFocusVisuals()
-end sub
-
-sub startTrailerPlayback()
-    if hasPlayableTrailer() <> true
-        m.playbackErrorLabel.text = "No playable trailer is available."
+sub videoDetailScreenStartTrailerPlayback()
+    if videoDetailScreenHasPlayableTrailer() <> true
+        videoDetailScreenSetStatusMessage("Трейлер недоступен.")
         return
     end if
 
@@ -619,7 +618,7 @@ sub startTrailerPlayback()
         itemId: m.item.itemId
         mediaId: 0
         itemTitle: m.item.title
-        title: "Trailer"
+        title: "Трейлер"
         subtitle: ""
         seasonNumber: 0
         episodeNumber: 0
@@ -636,550 +635,698 @@ sub startTrailerPlayback()
     }
 end sub
 
-sub selectSimilarItem()
-    if hasSimilarItems() <> true then return
-    if m.selectedSimilarIndex < 0 or m.selectedSimilarIndex >= m.similarItems.Count() then return
+' ---------------------------------------------------------------------------
+' Content — below-hero scrollable stack of rows: seasons tiles (rail),
+' recommendations (rail), ratings, tech info. Mutually exclusive with the
+' episode list (videoDetailScreenApplySectionVisibility). Rebuilt as a whole
+' by videoDetailScreenRenderContent whenever the item changes. (A comments
+' row briefly existed here in an earlier version — removed since KinoPub
+' deprecated comments/reviews on the main site.)
+' ---------------------------------------------------------------------------
 
-    item = m.similarItems[m.selectedSimilarIndex]
-    if item.itemId = invalid or item.itemId <= 0 then return
+sub videoDetailScreenRenderContent()
+    childCount = m.contentHost.getChildCount()
+    if childCount > 0 then m.contentHost.removeChildrenIndex(childCount, 0)
+    m.contentRows = []
 
-    m.top.selection = {
-        itemId: item.itemId
-        mediaId: item.mediaId
-        source: "similar"
-    }
-end sub
+    y = 12
 
-sub loadItemBookmarkFolders()
-    if m.item = invalid or m.item.itemId <= 0 then return
-
-    task = CreateObject("roSGNode", "ContentTask")
-    task.command = "loadItemBookmarkFolders"
-    task.request = { itemId: m.item.itemId }
-    task.observeField("response", "onItemBookmarkFoldersResponse")
-    task.control = "RUN"
-    m.itemBookmarkFoldersTask = task
-end sub
-
-sub onItemBookmarkFoldersResponse(event as Object)
-    response = event.getData()
-    if response = invalid or response.ok <> true
-        if responseRequiresSignIn(response) then requestSignInAgain(response)
-        return
-    end if
-    m.itemBookmarkFolders = []
-    if response.folders <> invalid then m.itemBookmarkFolders = response.folders
-    renderBookmarkAction()
-    if m.bookmarkOverlayOpen then renderBookmarkOverlayFolders()
-end sub
-
-sub renderBookmarkAction()
-    if m.bookmarkLabel = invalid then return
-    count = 0
-    if m.itemBookmarkFolders <> invalid then count = m.itemBookmarkFolders.Count()
-    if count > 0
-        m.bookmarkLabel.text = "Bookmarked (" + StrI(count).Trim() + ")"
-    else
-        m.bookmarkLabel.text = "Bookmarks"
-    end if
-    updateBookmarkActionFocus()
-end sub
-
-sub updateBookmarkActionFocus()
-    if m.bookmarkFocusBg = invalid then return
-    palette = detailUiPalette()
-    if m.focusArea = "bookmark"
-        m.bookmarkFocusBg.color = detailButtonColor(true, false)
-        m.bookmarkLabel.color = palette.primaryText
-    else
-        m.bookmarkFocusBg.color = detailButtonColor(false, false)
-        m.bookmarkLabel.color = "#D1D5DB"
-    end if
-end sub
-
-sub openBookmarkOverlay()
-    if m.item = invalid or m.item.itemId <= 0 then return
-    m.bookmarkOverlayOpen = true
-    m.bookmarkOverlayGroup.visible = true
-    m.bookmarkOverlayStatusLabel.text = "Loading folders..."
-    m.bookmarkFolders = []
-    renderBookmarkOverlayFolders()
-    loadBookmarkFoldersForOverlay()
-end sub
-
-sub closeBookmarkOverlay()
-    m.bookmarkOverlayOpen = false
-    m.bookmarkOverlayGroup.visible = false
-end sub
-
-sub loadBookmarkFoldersForOverlay()
-    task = CreateObject("roSGNode", "ContentTask")
-    task.command = "loadBookmarkFolders"
-    task.request = {}
-    task.observeField("response", "onBookmarkOverlayFoldersResponse")
-    task.control = "RUN"
-    m.bookmarkOverlayTask = task
-end sub
-
-sub onBookmarkOverlayFoldersResponse(event as Object)
-    response = event.getData()
-    if response = invalid or response.ok <> true
-        if responseRequiresSignIn(response)
-            requestSignInAgain(response)
-            return
-        end if
-        message = "Unable to load bookmark folders."
-        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
-        m.bookmarkOverlayStatusLabel.text = message
-        return
+    if m.hasSeasonsRow
+        row = videoDetailScreenBuildRailRow("seasons", "Сезоны", y)
+        row.items = m.seasons
+        row.cursorIndex = m.currentSeasonIndex
+        m.contentRows.Push(row)
+        videoDetailScreenRenderSeasonTiles(row)
+        y = y + row.height + 28
     end if
 
-    m.bookmarkFolders = []
-    if response.folders <> invalid then m.bookmarkFolders = response.folders
-    if m.selectedBookmarkFolderIndex >= m.bookmarkFolders.Count() then m.selectedBookmarkFolderIndex = m.bookmarkFolders.Count() - 1
-    if m.selectedBookmarkFolderIndex < 0 then m.selectedBookmarkFolderIndex = 0
-
-    if m.bookmarkFolders.Count() = 0
-        m.bookmarkOverlayStatusLabel.text = "No bookmark folders yet."
-    else
-        m.bookmarkOverlayStatusLabel.text = "Choose a folder"
+    if m.item.similarItems <> invalid and m.item.similarItems.Count() > 0
+        row = videoDetailScreenBuildRailRow("recommendations", "Похожее", y)
+        row.items = m.item.similarItems
+        row.cursorIndex = 0
+        m.contentRows.Push(row)
+        videoDetailScreenRenderRecommendationTiles(row)
+        y = y + row.height + 28
     end if
-    renderBookmarkOverlayFolders()
+
+    if videoDetailScreenHasAnyRating()
+        row = videoDetailScreenRenderRatingsRow(y)
+        m.contentRows.Push(row)
+        y = y + row.height + 28
+    end if
+
+    if m.item.detailFacts <> invalid and m.item.detailFacts.Count() > 0
+        row = videoDetailScreenRenderInfoRow(y)
+        m.contentRows.Push(row)
+    end if
+
+    if m.contentRowIndex >= m.contentRows.Count() then m.contentRowIndex = m.contentRows.Count() - 1
+    if m.contentRowIndex < 0 then m.contentRowIndex = 0
+    videoDetailScreenUpdateContentFocus()
 end sub
 
-sub renderBookmarkOverlayFolders()
-    if m.bookmarkOverlayFoldersHost = invalid then return
-    palette = detailUiPalette()
-    childCount = m.bookmarkOverlayFoldersHost.getChildCount()
-    if childCount > 0 then m.bookmarkOverlayFoldersHost.removeChildrenIndex(childCount, 0)
-    m.bookmarkOverlayRows = []
-    m.bookmarkOverlayRowBgs = []
-
-    maxRows = m.bookmarkFolders.Count()
-    if maxRows > 6 then maxRows = 6
-    for index = 0 to maxRows - 1
-        folder = m.bookmarkFolders[index]
-        row = CreateObject("roSGNode", "Group")
-        row.translation = [0, index * 50]
-
-        bg = CreateObject("roSGNode", "Rectangle")
-        bg.width = 504
-        bg.height = 42
-        bg.color = palette.surface
-        row.appendChild(bg)
-
-        marker = CreateObject("roSGNode", "Label")
-        if bookmarkFolderContainsItem(folder.folderId)
-            marker.text = "On"
-        else
-            marker.text = "Off"
-        end if
-        marker.translation = [14, 11]
-        marker.width = 44
-        marker.color = "#D1D5DB"
-        row.appendChild(marker)
-
-        label = CreateObject("roSGNode", "Label")
-        label.text = folder.title
-        label.translation = [64, 11]
-        label.width = 360
-        label.color = palette.text
-        row.appendChild(label)
-
-        count = CreateObject("roSGNode", "Label")
-        count.text = bookmarkFolderCountText(folder)
-        count.translation = [424, 11]
-        count.width = 64
-        count.color = palette.muted
-        count.horizAlign = "right"
-        row.appendChild(count)
-
-        m.bookmarkOverlayFoldersHost.appendChild(row)
-        m.bookmarkOverlayRows.Push(row)
-        m.bookmarkOverlayRowBgs.Push(bg)
-    end for
-
-    updateBookmarkOverlayFocus()
-end sub
-
-function bookmarkFolderContainsItem(folderId as Integer) as Boolean
-    if m.itemBookmarkFolders = invalid then return false
-    for each folder in m.itemBookmarkFolders
-        if folder <> invalid and folder.folderId = folderId then return true
-    end for
+function videoDetailScreenHasAnyRating() as Boolean
+    if m.item = invalid then return false
+    if m.item.imdbRating <> invalid and m.item.imdbRating <> "" and m.item.imdbRating <> "0" then return true
+    if m.item.kinopoiskRating <> invalid and m.item.kinopoiskRating <> "" and m.item.kinopoiskRating <> "0" then return true
+    if m.item.kinopubRating <> invalid and m.item.kinopubRating <> "" and m.item.kinopubRating <> "0" then return true
     return false
 end function
 
-function bookmarkFolderCountText(folder as Dynamic) as String
-    if folder = invalid or folder.count = invalid then return ""
-    return StrI(folder.count).Trim()
+' Shared scaffold (heading + windowed horizontal tile rail + chevrons) for
+' both the seasons row and the recommendations row — they differ only in
+' which items feed the tiles, card badge options, and what OK does with the
+' focused one (videoDetailScreenActivateContentRow), all keyed off
+' row.rowType. Caller fills in row.items/row.cursorIndex after this returns.
+'
+' Tiles start at y=60 (not a tighter 30) so the focused tile's 1.16x
+' scale-up — which bleeds roughly (285 * 0.16) / 2 =~ 23px above its nominal
+' top — still clears the 24px-tall heading above it with a few px to spare;
+' 30 wasn't enough clearance and let the popped top-row tile visually
+' overlap the heading text (same bug, same fix, as Stage 1's single-purpose
+' seasons row — regressed here when it was generalized into this shared
+' builder for Stage 2, now fixed in the one place both rows share).
+function videoDetailScreenBuildRailRow(rowType as String, headingText as String, y as Integer) as Object
+    railTop = 60
+    rowHeight = railTop + 285
+
+    node = CreateObject("roSGNode", "Group")
+    node.translation = [0, y]
+
+    heading = CreateObject("roSGNode", "Label")
+    heading.text = headingText
+    heading.width = 400
+    heading.height = 24
+    heading.color = "#FFFFFF"
+    node.appendChild(heading)
+
+    railClip = CreateObject("roSGNode", "Group")
+    railClip.translation = [-m.railPad, railTop - m.railPad]
+    railClip.clippingRect = [0, 0, m.railContentWidth + (m.railPad * 2), 285 + (m.railPad * 2)]
+    node.appendChild(railClip)
+
+    railHost = CreateObject("roSGNode", "Group")
+    railHost.translation = [m.railPad, m.railPad]
+    railClip.appendChild(railHost)
+
+    leftChevron = CreateObject("roSGNode", "Label")
+    leftChevron.text = "<"
+    leftChevron.translation = [-24, railTop + 130]
+    leftChevron.width = 32
+    leftChevron.horizAlign = "center"
+    leftChevron.color = "#D1D9E0"
+    leftChevron.visible = false
+    node.appendChild(leftChevron)
+
+    rightChevron = CreateObject("roSGNode", "Label")
+    rightChevron.text = ">"
+    rightChevron.translation = [m.railContentWidth + 24, railTop + 130]
+    rightChevron.width = 32
+    rightChevron.horizAlign = "center"
+    rightChevron.color = "#D1D9E0"
+    rightChevron.visible = false
+    node.appendChild(rightChevron)
+
+    m.contentHost.appendChild(node)
+
+    return {
+        rowType: rowType
+        y: y
+        height: rowHeight
+        node: node
+        railHost: railHost
+        leftChevron: leftChevron
+        rightChevron: rightChevron
+        items: []
+        cursorIndex: 0
+        visibleStart: 0
+        tileNodes: []
+    }
 end function
 
-sub updateBookmarkOverlayFocus()
-    palette = detailUiPalette()
-    for index = 0 to m.bookmarkOverlayRowBgs.Count() - 1
-        if index = m.selectedBookmarkFolderIndex
-            m.bookmarkOverlayRowBgs[index].color = palette.surfaceFocus
+' Tile chrome is semi-transparent white ("frosted glass") rather than fully
+' see-through: createPosterCard's title/subtitle text (PosterCard.brs, a
+' shared component used by every grid in the app) is hardcoded dark, so it
+' needs some opaque backing to stay legible against the backdrop image below
+' it — unlike the episode rows/other content rows below, which this screen
+' builds itself and can freely recolor for full light-on-dark contrast.
+sub videoDetailScreenRenderSeasonTiles(row as Object)
+    childCount = row.railHost.getChildCount()
+    if childCount > 0 then row.railHost.removeChildrenIndex(childCount, 0)
+    row.tileNodes = []
+
+    count = m.seasons.Count()
+    if count = 0 then return
+
+    if row.cursorIndex < 0 then row.cursorIndex = 0
+    if row.cursorIndex >= count then row.cursorIndex = count - 1
+
+    startIndex = row.visibleStart
+    if row.cursorIndex < startIndex then startIndex = row.cursorIndex
+    if row.cursorIndex >= startIndex + m.maxVisibleRailTiles then startIndex = row.cursorIndex - m.maxVisibleRailTiles + 1
+    maxStart = count - m.maxVisibleRailTiles
+    if maxStart < 0 then maxStart = 0
+    if startIndex > maxStart then startIndex = maxStart
+    if startIndex < 0 then startIndex = 0
+    row.visibleStart = startIndex
+
+    lastIndex = startIndex + m.maxVisibleRailTiles - 1
+    if lastIndex >= count then lastIndex = count - 1
+
+    posterUrl = ""
+    if m.item <> invalid and m.item.posterUrl <> invalid then posterUrl = m.item.posterUrl
+
+    for index = startIndex to lastIndex
+        season = m.seasons[index]
+        seasonItem = {
+            title: season.title
+            posterUrl: posterUrl
+            unwatchedCount: videoDetailScreenSeasonUnwatchedCount(index)
+            watched: videoDetailScreenSeasonAllWatched(index)
+        }
+
+        x = (index - startIndex) * (m.railCardWidth + m.railCardGapX)
+        layout = posterCompactLayout(x, 0, m.railCardWidth)
+        layout.showUnwatchedBadge = true
+        layout.showWatchedBadge = true
+        cardInfo = createPosterCard(seasonItem, layout)
+        row.railHost.appendChild(cardInfo.node)
+        row.tileNodes.Push({ node: cardInfo.node, focusBg: cardInfo.focusBg, focusShadow: cardInfo.focusShadow, index: index })
+    end for
+
+    row.leftChevron.visible = startIndex > 0
+    row.rightChevron.visible = (startIndex + m.maxVisibleRailTiles) < count
+end sub
+
+sub videoDetailScreenRenderRecommendationTiles(row as Object)
+    childCount = row.railHost.getChildCount()
+    if childCount > 0 then row.railHost.removeChildrenIndex(childCount, 0)
+    row.tileNodes = []
+
+    items = m.item.similarItems
+    count = items.Count()
+    if count = 0 then return
+
+    if row.cursorIndex < 0 then row.cursorIndex = 0
+    if row.cursorIndex >= count then row.cursorIndex = count - 1
+
+    startIndex = row.visibleStart
+    if row.cursorIndex < startIndex then startIndex = row.cursorIndex
+    if row.cursorIndex >= startIndex + m.maxVisibleRailTiles then startIndex = row.cursorIndex - m.maxVisibleRailTiles + 1
+    maxStart = count - m.maxVisibleRailTiles
+    if maxStart < 0 then maxStart = 0
+    if startIndex > maxStart then startIndex = maxStart
+    if startIndex < 0 then startIndex = 0
+    row.visibleStart = startIndex
+
+    lastIndex = startIndex + m.maxVisibleRailTiles - 1
+    if lastIndex >= count then lastIndex = count - 1
+
+    for index = startIndex to lastIndex
+        x = (index - startIndex) * (m.railCardWidth + m.railCardGapX)
+        layout = posterCompactLayout(x, 0, m.railCardWidth)
+        cardInfo = createPosterCard(items[index], layout)
+        row.railHost.appendChild(cardInfo.node)
+        row.tileNodes.Push({ node: cardInfo.node, focusBg: cardInfo.focusBg, focusShadow: cardInfo.focusShadow, index: index })
+    end for
+
+    row.leftChevron.visible = startIndex > 0
+    row.rightChevron.visible = (startIndex + m.maxVisibleRailTiles) < count
+end sub
+
+sub videoDetailScreenUpdateRailRowFocus(row as Object, isRowFocused as Boolean)
+    isSeasonsRow = row.rowType = "seasons"
+    for each tileNode in row.tileNodes
+        isFocused = isRowFocused and (tileNode.index = row.cursorIndex)
+        isActive = isSeasonsRow and (tileNode.index = m.currentSeasonIndex)
+        tileNode.focusShadow.visible = isFocused
+        if isFocused
+            tileNode.focusBg.color = "#BFDBFE"
+            tileNode.focusBg.opacity = 1.0
+            tileNode.node.scale = [1.16, 1.16]
+        else if isActive
+            tileNode.focusBg.color = "#FFFFFF"
+            tileNode.focusBg.opacity = 0.7
+            tileNode.node.scale = [1.0, 1.0]
         else
-            m.bookmarkOverlayRowBgs[index].color = palette.surface
+            tileNode.focusBg.color = "#FFFFFF"
+            tileNode.focusBg.opacity = 0.5
+            tileNode.node.scale = [1.0, 1.0]
         end if
     end for
 end sub
 
-sub moveBookmarkOverlayFolder(delta as Integer)
-    if m.bookmarkFolders.Count() = 0 then return
-    nextIndex = m.selectedBookmarkFolderIndex + delta
-    if nextIndex < 0 then nextIndex = 0
-    maxIndex = m.bookmarkFolders.Count() - 1
-    if maxIndex > 5 then maxIndex = 5
-    if nextIndex > maxIndex then nextIndex = maxIndex
-    m.selectedBookmarkFolderIndex = nextIndex
-    updateBookmarkOverlayFocus()
+function videoDetailScreenSeasonUnwatchedCount(seasonIndex as Integer) as Integer
+    episodes = videoDetailScreenPlayableEpisodesForSeason(seasonIndex)
+    count = 0
+    for each episode in episodes
+        if episode.isPlayable = true and episode.watched <> true then count = count + 1
+    end for
+    return count
+end function
+
+function videoDetailScreenSeasonAllWatched(seasonIndex as Integer) as Boolean
+    episodes = videoDetailScreenPlayableEpisodesForSeason(seasonIndex)
+    playableCount = 0
+    for each episode in episodes
+        if episode.isPlayable = true then playableCount = playableCount + 1
+    end for
+    if playableCount = 0 then return false
+    return videoDetailScreenSeasonUnwatchedCount(seasonIndex) = 0
+end function
+
+' Entering a season tile (OK): if it's already the active season, keep the
+' existing episode selection (preserves e.g. a resume-in-progress episode
+' picked by the initial global scan); otherwise rescan just that season.
+sub videoDetailScreenSelectSeason(seasonIndex as Integer)
+    if seasonIndex < 0 or seasonIndex >= m.seasons.Count() then return
+    if seasonIndex <> m.currentSeasonIndex
+        m.currentSeasonIndex = seasonIndex
+        videoDetailScreenSelectFirstUnwatchedInSeason(seasonIndex)
+    end if
+    m.focusArea = "episodes"
+    videoDetailScreenSetHeroScrolled(true)
+    videoDetailScreenRenderEpisodes()
+    videoDetailScreenRenderActions()
+    videoDetailScreenApplySectionVisibility()
 end sub
 
-sub toggleSelectedBookmarkFolder()
-    if m.item = invalid or m.bookmarkFolders.Count() = 0 then return
-    folder = m.bookmarkFolders[m.selectedBookmarkFolderIndex]
-    m.bookmarkOverlayStatusLabel.text = "Updating bookmark..."
-
-    task = CreateObject("roSGNode", "ContentTask")
-    task.command = "toggleItemBookmark"
-    task.request = { itemId: m.item.itemId, folderId: folder.folderId }
-    task.observeField("response", "onToggleItemBookmarkResponse")
-    task.control = "RUN"
-    m.toggleBookmarkTask = task
-end sub
-
-sub onToggleItemBookmarkResponse(event as Object)
-    response = event.getData()
-    if response = invalid or response.ok <> true
-        if responseRequiresSignIn(response)
-            requestSignInAgain(response)
+sub videoDetailScreenSelectFirstUnwatchedInSeason(seasonIndex as Integer)
+    episodes = videoDetailScreenPlayableEpisodesForSeason(seasonIndex)
+    for index = 0 to episodes.Count() - 1
+        if episodes[index].isPlayable = true and episodes[index].watched <> true
+            m.currentEpisodeIndex = index
             return
         end if
-        message = "Unable to update bookmark."
-        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
-        m.bookmarkOverlayStatusLabel.text = message
-        return
-    end if
-
-    m.bookmarkOverlayStatusLabel.text = "Bookmark updated."
-    loadItemBookmarkFolders()
-    loadBookmarkFoldersForOverlay()
-end sub
-
-function joinMetadata(values as Dynamic) as String
-    if values = invalid or values.Count() = 0 then return ""
-
-    text = ""
-    for index = 0 to values.Count() - 1
-        if values[index] <> invalid and values[index] <> ""
-            if text <> "" then text = text + "  |  "
-            text = text + values[index]
+    end for
+    for index = 0 to episodes.Count() - 1
+        if episodes[index].isPlayable = true
+            m.currentEpisodeIndex = index
+            return
         end if
     end for
-    return text
+    m.currentEpisodeIndex = 0
+end sub
+
+' ---------------------------------------------------------------------------
+' Ratings row — up to 3 static boxes (IMDb/Kinopoisk/KinoPub), only the
+' ratings that are actually present. Reuses the existing rating icon assets
+' already shipped for PosterCard.brs's grid-card rating badges.
+' ---------------------------------------------------------------------------
+
+function videoDetailScreenRenderRatingsRow(y as Integer) as Object
+    rowHeight = 24 + 8 + 56
+
+    node = CreateObject("roSGNode", "Group")
+    node.translation = [0, y]
+
+    focusBg = CreateObject("roSGNode", "Rectangle")
+    focusBg.width = 700
+    focusBg.height = rowHeight
+    focusBg.color = "#FFFFFF"
+    focusBg.opacity = 0
+    node.appendChild(focusBg)
+
+    heading = CreateObject("roSGNode", "Label")
+    heading.text = "Рейтинги"
+    heading.width = 400
+    heading.height = 24
+    heading.color = "#FFFFFF"
+    node.appendChild(heading)
+
+    boxes = []
+    if m.item.imdbRating <> invalid and m.item.imdbRating <> "" and m.item.imdbRating <> "0" then boxes.Push({ label: "IMDb", value: m.item.imdbRating, icon: "" })
+    if m.item.kinopoiskRating <> invalid and m.item.kinopoiskRating <> "" and m.item.kinopoiskRating <> "0" then boxes.Push({ label: "Кинопоиск", value: m.item.kinopoiskRating, icon: "pkg:/images/ui/icon-kinopoisk.png" })
+    if m.item.kinopubRating <> invalid and m.item.kinopubRating <> "" and m.item.kinopubRating <> "0" then boxes.Push({ label: "KinoPub", value: m.item.kinopubRating, icon: "pkg:/images/ui/icon-kinopub.png" })
+
+    x = 0
+    for each ratingBox in boxes
+        boxWidth = 180
+        boxGroup = CreateObject("roSGNode", "Group")
+        boxGroup.translation = [x, 32]
+
+        boxBg = CreateObject("roSGNode", "Rectangle")
+        boxBg.width = boxWidth
+        boxBg.height = 56
+        boxBg.color = "#FFFFFF"
+        boxBg.opacity = 0.12
+        boxGroup.appendChild(boxBg)
+
+        textX = 14
+        if ratingBox.icon <> ""
+            icon = CreateObject("roSGNode", "Poster")
+            icon.translation = [14, 14]
+            icon.width = 28
+            icon.height = 28
+            icon.uri = ratingBox.icon
+            icon.loadDisplayMode = "scaleToFit"
+            boxGroup.appendChild(icon)
+            textX = 50
+        end if
+
+        valueLabel = CreateObject("roSGNode", "Label")
+        valueLabel.text = ratingBox.value
+        valueLabel.translation = [textX, 8]
+        valueLabel.width = boxWidth - textX - 10
+        valueLabel.height = 24
+        valueLabel.color = "#FFFFFF"
+        valueLabel.font.size = 20
+        boxGroup.appendChild(valueLabel)
+
+        nameLabel = CreateObject("roSGNode", "Label")
+        nameLabel.text = ratingBox.label
+        nameLabel.translation = [textX, 32]
+        nameLabel.width = boxWidth - textX - 10
+        nameLabel.height = 18
+        nameLabel.color = "#D1D9E0"
+        nameLabel.font.size = 13
+        boxGroup.appendChild(nameLabel)
+
+        node.appendChild(boxGroup)
+        x = x + boxWidth + 16
+    end for
+
+    m.contentHost.appendChild(node)
+
+    return { rowType: "ratings", y: y, height: rowHeight, node: node, focusBg: focusBg }
 end function
 
-function descriptionOverlayLines() as Object
-    lines = []
-    if m.descriptionLabel = invalid or m.descriptionLabel.text = invalid or m.descriptionLabel.text = "" then return lines
+' ---------------------------------------------------------------------------
+' Info row — item.detailFacts (already computed server-response-side by
+' KinoItemService.brs), translated to Russian at render time only. The
+' underlying English keys stay untouched since videoDetailScreenRenderBadges
+' (the hero's 4K/CC/AC3/FINISHED chips) matches on those exact labels. Skips
+' the "Ratings" fact — redundant with the dedicated ratings row above.
+' ---------------------------------------------------------------------------
 
-    text = m.descriptionLabel.text
-    lineLength = m.descriptionOverlayLineLength
-    if lineLength < 20 then lineLength = 20
-
-    position = 1
-    while position <= Len(text)
-        lines.Push(Mid(text, position, lineLength))
-        position = position + lineLength
-    end while
-
-    return lines
+function videoDetailScreenInfoLabelRu(label as String) as String
+    if label = "Director" then return "Режиссёр"
+    if label = "Cast" then return "Актёры"
+    if label = "Voice" then return "Озвучка"
+    if label = "Quality" then return "Качество"
+    if label = "Tracks" then return "Дорожки"
+    if label = "Activity" then return "Активность"
+    if label = "Series" then return "Статус"
+    if label = "Note" then return "Заметка"
+    return label
 end function
 
-sub openDescriptionOverlay()
-    lines = descriptionOverlayLines()
-    if lines.Count() = 0 then return
+function videoDetailScreenRenderInfoRow(y as Integer) as Object
+    facts = []
+    for each fact in m.item.detailFacts
+        if fact.label <> "Ratings" then facts.Push(fact)
+    end for
 
-    m.descriptionOverlayScrollStart = 0
-    m.descriptionOverlayGroup.visible = true
-    renderDescriptionOverlayText()
-end sub
+    ' Smaller font + tighter line height than a plain 24px default so this
+    ' (always the last row) leaves a bit of breathing room between its last
+    ' line and the bottom of the scrollable viewport — a flat 24px-per-line
+    ' block ran flush against the edge with nothing below it.
+    lineHeight = 20
+    fontSize = 16
+    lineCount = facts.Count()
+    if lineCount = 0 then lineCount = 1
+    rowHeight = 24 + 8 + (lineCount * lineHeight) + 16
 
-sub closeDescriptionOverlay()
-    if m.descriptionOverlayGroup = invalid then return
-    m.descriptionOverlayGroup.visible = false
-    m.descriptionOverlayScrollStart = 0
-    updateDescriptionFocusVisual()
-end sub
+    node = CreateObject("roSGNode", "Group")
+    node.translation = [0, y]
 
-sub scrollDescriptionOverlay(delta as Integer)
-    if m.descriptionOverlayGroup = invalid or m.descriptionOverlayGroup.visible <> true then return
+    focusBg = CreateObject("roSGNode", "Rectangle")
+    focusBg.width = 700
+    focusBg.height = rowHeight
+    focusBg.color = "#FFFFFF"
+    focusBg.opacity = 0
+    node.appendChild(focusBg)
 
-    lines = descriptionOverlayLines()
-    maxStart = lines.Count() - m.descriptionOverlayMaxLines
-    if maxStart < 0 then maxStart = 0
+    heading = CreateObject("roSGNode", "Label")
+    heading.text = "Общая информация"
+    heading.width = 400
+    heading.height = 24
+    heading.color = "#FFFFFF"
+    node.appendChild(heading)
 
-    nextStart = m.descriptionOverlayScrollStart + delta
-    if nextStart < 0 then nextStart = 0
-    if nextStart > maxStart then nextStart = maxStart
+    if facts.Count() = 0
+        empty = CreateObject("roSGNode", "Label")
+        empty.text = "Нет данных"
+        empty.translation = [0, 32]
+        empty.width = 700
+        empty.height = lineHeight
+        empty.color = "#D1D9E0"
+        empty.font.size = fontSize
+        node.appendChild(empty)
+    else
+        for index = 0 to facts.Count() - 1
+            fact = facts[index]
+            lineY = 32 + (index * lineHeight)
 
-    m.descriptionOverlayScrollStart = nextStart
-    renderDescriptionOverlayText()
-end sub
+            label = CreateObject("roSGNode", "Label")
+            label.text = videoDetailScreenInfoLabelRu(fact.label)
+            label.translation = [0, lineY]
+            label.width = 180
+            label.height = lineHeight
+            label.color = "#D1D9E0"
+            label.font.size = fontSize
+            node.appendChild(label)
 
-sub renderDescriptionOverlayText()
-    lines = descriptionOverlayLines()
-    text = ""
-    if lines.Count() > 0
-        startIndex = m.descriptionOverlayScrollStart
-        lastIndex = startIndex + m.descriptionOverlayMaxLines - 1
-        if lastIndex >= lines.Count() then lastIndex = lines.Count() - 1
-
-        for index = startIndex to lastIndex
-            if text <> "" then text = text + Chr(10)
-            text = text + lines[index]
+            value = CreateObject("roSGNode", "Label")
+            value.text = fact.value
+            value.translation = [190, lineY]
+            value.width = 520
+            value.height = lineHeight
+            value.color = "#FFFFFF"
+            value.font.size = fontSize
+            node.appendChild(value)
         end for
     end if
 
-    m.descriptionOverlayTextLabel.text = text
-    m.descriptionOverlayScrollUpChevron.visible = m.descriptionOverlayScrollStart > 0
-    m.descriptionOverlayScrollDownChevron.visible = (m.descriptionOverlayScrollStart + m.descriptionOverlayMaxLines) < lines.Count()
-end sub
+    m.contentHost.appendChild(node)
 
-sub updateDescriptionFocusVisual()
-    if m.descriptionFocusBg = invalid then return
-    palette = detailUiPalette()
-    m.descriptionFocusBg.color = palette.surfaceFocus
-    if m.focusArea = "description" and m.detailGroup.visible = true and m.descriptionOverlayGroup.visible <> true
-        m.descriptionFocusBg.opacity = 0.74
-    else
-        m.descriptionFocusBg.opacity = 0
-    end if
-end sub
+    return { rowType: "info", y: y, height: rowHeight, node: node, focusBg: focusBg }
+end function
 
-sub renderSeasonTabs()
-    palette = detailUiPalette()
-    childCount = m.seasonTabsHost.getChildCount()
-    if childCount > 0 then m.seasonTabsHost.removeChildrenIndex(childCount, 0)
-    m.seasonTabBgs = []
-    tabRows = 0
+' ---------------------------------------------------------------------------
+' Content row focus/scroll — Up/Down moves m.contentRowIndex between rows;
+' Left/Right moves a row-local horizontal cursor, only meaningful for the
+' rail row types (seasons/recommendations). Scroll-to-focus mirrors the
+' episode list's flat-render-and-animate-translation technique, generalized
+' from a fixed row step to each row's actual computed height.
+' ---------------------------------------------------------------------------
 
-    if m.seasons.Count() = 0
-        m.panelTitleLabel.text = "Video"
-        updateEpisodeListLayout(0)
-        return
-    end if
-
-    if m.seasons.Count() <= 1
-        m.panelTitleLabel.text = m.seasons[0].title
-        updateEpisodeListLayout(0)
-        return
-    end if
-
-    m.panelTitleLabel.text = "Episodes"
-    tabX = 0
-    tabY = 0
-    tabRows = 1
-
-    for index = 0 to m.seasons.Count() - 1
-        if tabX > 0 and tabX + m.seasonTabWidth > m.seasonTabPanelWidth
-            tabX = 0
-            tabY = tabY + m.seasonTabRowHeight
-            tabRows = tabRows + 1
+sub videoDetailScreenUpdateContentFocus()
+    for i = 0 to m.contentRows.Count() - 1
+        row = m.contentRows[i]
+        isRowFocused = (i = m.contentRowIndex) and (m.focusArea = "content")
+        if row.rowType = "seasons" or row.rowType = "recommendations"
+            videoDetailScreenUpdateRailRowFocus(row, isRowFocused)
+        else if row.focusBg <> invalid
+            if isRowFocused then row.focusBg.opacity = 0.16 else row.focusBg.opacity = 0
         end if
-
-        tabGroup = CreateObject("roSGNode", "Group")
-        tabGroup.translation = [tabX, tabY]
-
-        bg = CreateObject("roSGNode", "Rectangle")
-        bg.width = m.seasonTabWidth
-        bg.height = m.seasonTabHeight
-        bg.color = palette.surface
-        tabGroup.appendChild(bg)
-
-        label = CreateObject("roSGNode", "Label")
-        label.text = "S" + StrI(m.seasons[index].number).Trim()
-        label.translation = [20, 10]
-        label.color = "#D1D5DB"
-        tabGroup.appendChild(label)
-
-        m.seasonTabsHost.appendChild(tabGroup)
-        m.seasonTabBgs.Push(bg)
-        tabX = tabX + m.seasonTabWidth + m.seasonTabGap
     end for
-
-    updateEpisodeListLayout(tabRows)
+    videoDetailScreenScrollContentToFocus()
 end sub
 
-sub updateEpisodeListLayout(tabRows as Integer)
-    m.episodeListY = m.baseEpisodeListY
-    if tabRows > 1
-        m.episodeListY = m.baseEpisodeListY + ((tabRows - 1) * m.seasonTabRowHeight)
-    end if
-
-    m.episodeListHost.translation = [0, m.episodeListY]
-    m.episodeCursor.translation = [0, m.episodeListY]
-    if m.episodeScrollUpChevron <> invalid
-        m.episodeScrollUpChevron.translation = [396, m.episodeListY]
-    end if
-    m.noMediaLabel.translation = [0, m.episodeListY + 14]
-
-    availableHeight = m.episodeListBottomY - m.episodeListY
-    maxVisible = Int((availableHeight + 10) / 84)
-    if maxVisible < 1 then maxVisible = 1
-    if maxVisible > m.defaultMaxVisibleEpisodes then maxVisible = m.defaultMaxVisibleEpisodes
-    m.maxVisibleEpisodes = maxVisible
-    if m.episodeScrollDownChevron <> invalid
-        downY = m.episodeListY + ((m.maxVisibleEpisodes - 1) * 84)
-        if downY < m.episodeListY then downY = m.episodeListY
-        m.episodeScrollDownChevron.translation = [396, downY]
-    end if
-    updateEpisodeScrollChevrons()
+sub videoDetailScreenMoveContentRow(delta as Integer)
+    if m.contentRows.Count() = 0 then return
+    nextIndex = m.contentRowIndex + delta
+    if nextIndex < 0 then nextIndex = 0
+    if nextIndex >= m.contentRows.Count() then nextIndex = m.contentRows.Count() - 1
+    if nextIndex = m.contentRowIndex then return
+    m.contentRowIndex = nextIndex
+    videoDetailScreenUpdateContentFocus()
 end sub
 
-sub renderEpisodeList()
-    childCount = m.episodeListHost.getChildCount()
-    if childCount > 0 then m.episodeListHost.removeChildrenIndex(childCount, 0)
-    m.episodeRows = []
-    m.episodeRowIndexes = []
+sub videoDetailScreenMoveContentRailCursor(delta as Integer)
+    if m.contentRows.Count() = 0 then return
+    row = m.contentRows[m.contentRowIndex]
+    if row.rowType <> "seasons" and row.rowType <> "recommendations" then return
+
+    itemCount = row.items.Count()
+    if itemCount = 0 then return
+
+    nextIndex = row.cursorIndex + delta
+    if nextIndex < 0 then nextIndex = 0
+    if nextIndex >= itemCount then nextIndex = itemCount - 1
+    if nextIndex = row.cursorIndex then return
+    row.cursorIndex = nextIndex
+
+    if row.rowType = "seasons"
+        videoDetailScreenRenderSeasonTiles(row)
+    else
+        videoDetailScreenRenderRecommendationTiles(row)
+    end if
+    videoDetailScreenUpdateRailRowFocus(row, true)
+end sub
+
+' OK on the focused row: drills into the dedicated episode view for a
+' seasons-row tile, or re-selects a recommended item (reloads this same
+' screen instance on that item — the old dark-theme file's
+' selectSimilarItem() behavior). No-op on ratings/info rows.
+sub videoDetailScreenActivateContentRow()
+    if m.contentRows.Count() = 0 then return
+    row = m.contentRows[m.contentRowIndex]
+    if row.rowType = "seasons"
+        videoDetailScreenSelectSeason(row.cursorIndex)
+    else if row.rowType = "recommendations"
+        item = row.items[row.cursorIndex]
+        if item.itemId > 0
+            m.top.selection = { itemId: item.itemId, mediaId: item.mediaId, source: "similar" }
+        end if
+    end if
+end sub
+
+sub videoDetailScreenScrollContentToFocus()
+    if m.contentRows.Count() = 0 then return
+    row = m.contentRows[m.contentRowIndex]
+
+    rowTop = row.y
+    rowBottom = rowTop + row.height
+
+    currentOffset = m.contentScrollOffsetY
+    newOffset = currentOffset
+
+    if rowTop < currentOffset
+        newOffset = rowTop
+    else if rowBottom > (currentOffset + m.contentViewportHeight)
+        newOffset = rowBottom - m.contentViewportHeight
+    end if
+
+    if newOffset < 0 then newOffset = 0
+    if newOffset <> currentOffset
+        videoDetailScreenAnimateContentScroll(currentOffset, newOffset)
+        m.contentScrollOffsetY = newOffset
+    end if
+end sub
+
+sub videoDetailScreenAnimateContentScroll(fromY as Integer, toY as Integer)
+    if m.contentScrollAnimation = invalid
+        animation = CreateObject("roSGNode", "Animation")
+        animation.duration = 0.25
+        animation.easeFunction = "inOutQuad"
+        interpolator = CreateObject("roSGNode", "Vector2DFieldInterpolator")
+        interpolator.key = [0, 1]
+        interpolator.fieldToInterp = "contentHost.translation"
+        animation.appendChild(interpolator)
+        m.top.appendChild(animation)
+        m.contentScrollAnimation = animation
+        m.contentScrollInterpolator = interpolator
+    end if
+
+    m.contentScrollInterpolator.keyValue = [[m.railPad, m.railPad - fromY], [m.railPad, m.railPad - toY]]
+    m.contentScrollAnimation.control = "start"
+end sub
+
+' ---------------------------------------------------------------------------
+' Episode list (flat render, scrolled into view — no windowing)
+' ---------------------------------------------------------------------------
+
+sub videoDetailScreenRenderEpisodes()
+    childCount = m.episodesHost.getChildCount()
+    if childCount > 0 then m.episodesHost.removeChildrenIndex(childCount, 0)
+    m.episodeRowNodes = []
+    m.episodesHost.translation = [0, 0]
+    m.episodesScrollOffsetY = 0
 
     if m.seasons.Count() = 0
-        showNoPlayableMedia()
+        m.noMediaLabel.visible = true
         return
     end if
 
     if m.currentSeasonIndex < 0 then m.currentSeasonIndex = 0
-    if m.currentSeasonIndex >= m.seasons.Count()
-        m.currentSeasonIndex = m.seasons.Count() - 1
-    end if
+    if m.currentSeasonIndex >= m.seasons.Count() then m.currentSeasonIndex = m.seasons.Count() - 1
 
-    episodes = []
-    if m.seasons[m.currentSeasonIndex].episodes <> invalid
-        episodes = m.seasons[m.currentSeasonIndex].episodes
-    end if
+    season = m.seasons[m.currentSeasonIndex]
+    m.episodesHeadingLabel.text = season.title
+    episodes = videoDetailScreenPlayableEpisodesForSeason(m.currentSeasonIndex)
 
     if episodes.Count() = 0
-        showNoPlayableMedia()
+        m.noMediaLabel.visible = true
         return
     end if
+    m.noMediaLabel.visible = false
 
     if m.currentEpisodeIndex < 0 then m.currentEpisodeIndex = 0
-    if m.currentEpisodeIndex >= episodes.Count()
-        m.currentEpisodeIndex = episodes.Count() - 1
-    end if
-    updateVisibleEpisodeWindow()
+    if m.currentEpisodeIndex >= episodes.Count() then m.currentEpisodeIndex = episodes.Count() - 1
 
-    m.noMediaLabel.visible = false
-    m.playbackErrorLabel.text = ""
-    startIndex = m.visibleEpisodeStart
-    lastIndex = startIndex + m.maxVisibleEpisodes - 1
-    if lastIndex >= episodes.Count() then lastIndex = episodes.Count() - 1
-
-    for index = startIndex to lastIndex
-        episode = episodes[index]
-        visibleIndex = index - startIndex
-        rowInfo = createEpisodeRow(episode, visibleIndex)
-        m.episodeListHost.appendChild(rowInfo.node)
-        m.episodeRows.Push(rowInfo.bg)
-        m.episodeRowIndexes.Push(index)
+    for index = 0 to episodes.Count() - 1
+        rowInfo = videoDetailScreenCreateEpisodeRow(episodes[index], index)
+        m.episodesHost.appendChild(rowInfo.node)
+        m.episodeRowNodes.Push({ node: rowInfo.node, bg: rowInfo.bg, index: index })
     end for
-    updateEpisodeScrollChevrons()
+
+    videoDetailScreenUpdateEpisodesFocus()
 end sub
 
-function createEpisodeRow(episode as Object, visibleIndex as Integer) as Object
-    palette = detailUiPalette()
+' Built by this screen (not a shared component like PosterCard.brs), so
+' rows can go fully light-on-dark to sit directly on the backdrop image —
+' see videoDetailScreenRenderSeasonTiles's comment for why season/
+' recommendation tiles can't do the same.
+function videoDetailScreenCreateEpisodeRow(episode as Object, index as Integer) as Object
     row = CreateObject("roSGNode", "Group")
-    row.translation = [0, visibleIndex * 84]
+    row.translation = [0, index * m.episodeRowStep]
 
     bg = CreateObject("roSGNode", "Rectangle")
-    bg.width = 380
+    bg.width = 700
     bg.height = 74
-    bg.color = palette.surface
+    bg.color = "#FFFFFF"
+    bg.opacity = 0.1
     row.appendChild(bg)
-
-    accent = CreateObject("roSGNode", "Rectangle")
-    accent.translation = [0, 0]
-    accent.width = 4
-    accent.height = 74
-    accent.color = palette.primaryFocus
-    accent.opacity = 0.52
-    row.appendChild(accent)
 
     title = CreateObject("roSGNode", "Label")
     title.text = episode.title
     title.translation = [18, 10]
-    title.width = 290
-    title.color = palette.text
+    title.width = 560
+    title.color = "#FFFFFF"
     row.appendChild(title)
 
-    subtitle = CreateObject("roSGNode", "Label")
-    subtitle.text = mediaSubtitle(episode)
-    progressText = episodeProgressText(episode)
+    subtitleText = videoDetailScreenMediaSubtitle(episode)
+    progressText = videoDetailScreenEpisodeProgressText(episode)
     if progressText <> ""
-        if subtitle.text <> "" then subtitle.text = subtitle.text + "  |  " + progressText else subtitle.text = progressText
+        if subtitleText <> "" then subtitleText = subtitleText + "  |  " + progressText else subtitleText = progressText
     end if
+    subtitle = CreateObject("roSGNode", "Label")
+    subtitle.text = subtitleText
     subtitle.translation = [18, 42]
-    subtitle.width = 330
-    subtitle.color = palette.muted
-    if episodeWatchStatus(episode) = 0 and progressText <> "" then subtitle.color = palette.success
+    subtitle.width = 600
+    subtitle.color = "#D1D9E0"
     row.appendChild(subtitle)
 
-    if episodeWatchStatus(episode) = 1 then appendWatchedCheck(row)
+    if videoDetailScreenEpisodeWatchStatus(episode) = 1
+        videoDetailScreenAppendWatchedCheck(row)
+    else
+        dot = CreateObject("roSGNode", "Label")
+        dot.text = "●"
+        dot.translation = [660, 10]
+        dot.width = 26
+        dot.horizAlign = "center"
+        dot.color = "#9CA3AF"
+        row.appendChild(dot)
+    end if
 
     return { node: row, bg: bg }
 end function
 
-sub updateVisibleEpisodeWindow()
-    episodes = playableEpisodesForSeason(m.currentSeasonIndex)
-    if episodes.Count() = 0
-        m.visibleEpisodeStart = 0
-        return
-    end if
-
-    if m.currentEpisodeIndex < m.visibleEpisodeStart
-        m.visibleEpisodeStart = m.currentEpisodeIndex
-    else if m.currentEpisodeIndex >= m.visibleEpisodeStart + m.maxVisibleEpisodes
-        m.visibleEpisodeStart = m.currentEpisodeIndex - m.maxVisibleEpisodes + 1
-    end if
-
-    maxStart = episodes.Count() - m.maxVisibleEpisodes
-    if maxStart < 0 then maxStart = 0
-    if m.visibleEpisodeStart > maxStart then m.visibleEpisodeStart = maxStart
-    if m.visibleEpisodeStart < 0 then m.visibleEpisodeStart = 0
+sub videoDetailScreenAppendWatchedCheck(row as Object)
+    check = CreateObject("roSGNode", "Label")
+    check.text = "✓"
+    check.translation = [660, 10]
+    check.width = 26
+    check.horizAlign = "center"
+    check.color = "#4ADE80"
+    row.appendChild(check)
 end sub
 
-sub updateEpisodeScrollChevrons()
-    if m.episodeScrollUpChevron = invalid or m.episodeScrollDownChevron = invalid then return
-
-    episodes = playableEpisodesForSeason(m.currentSeasonIndex)
-    showEpisodeHints = m.detailGroup.visible and episodes.Count() > 0 and episodes.Count() > m.maxVisibleEpisodes
-    if showEpisodeHints <> true
-        m.episodeScrollUpChevron.visible = false
-        m.episodeScrollDownChevron.visible = false
-        return
-    end if
-
-    m.episodeScrollUpChevron.visible = m.visibleEpisodeStart > 0
-    m.episodeScrollDownChevron.visible = (m.visibleEpisodeStart + m.maxVisibleEpisodes) < episodes.Count()
-end sub
-
-function mediaSubtitle(media as Object) as String
+function videoDetailScreenMediaSubtitle(media as Object) as String
     parts = []
     if media.seasonNumber > 0
-        seasonText = "S" + StrI(media.seasonNumber).Trim()
-        episodeText = " E" + StrI(media.episodeNumber).Trim()
-        parts.Push(seasonText + episodeText)
+        parts.Push("S" + StrI(media.seasonNumber).Trim() + " E" + StrI(media.episodeNumber).Trim())
     end if
     if media.durationSeconds > 0
-        parts.Push(StrI(Int(media.durationSeconds / 60)).Trim() + " min")
+        parts.Push(StrI(Int(media.durationSeconds / 60)).Trim() + " мин")
     end if
-    if media.isPlayable <> true then parts.Push("Unavailable")
-    return joinMetadata(parts)
+    if media.isPlayable <> true then parts.Push("Недоступно")
+    return videoDetailScreenJoinMetadata(parts)
 end function
 
-function episodeWatchStatus(media as Dynamic) as Integer
+function videoDetailScreenEpisodeWatchStatus(media as Dynamic) as Integer
     if media = invalid then return -1
     if media.watchStatus <> invalid then return media.watchStatus
     if media.watched = true then return 1
@@ -1187,20 +1334,20 @@ function episodeWatchStatus(media as Dynamic) as Integer
     return -1
 end function
 
-function episodeVideoNumber(media as Dynamic) as Integer
+function videoDetailScreenEpisodeVideoNumber(media as Dynamic) as Integer
     if media = invalid then return 0
     if media.videoNumber <> invalid and media.videoNumber > 0 then return media.videoNumber
     if media.episodeNumber <> invalid and media.episodeNumber > 0 then return media.episodeNumber
     return 0
 end function
 
-function watchedToggleKey(seasonNumber as Integer, videoNumber as Integer) as String
+function videoDetailScreenWatchedToggleKey(seasonNumber as Integer, videoNumber as Integer) as String
     return StrI(seasonNumber).Trim() + ":" + StrI(videoNumber).Trim()
 end function
 
-function episodeProgressText(media as Dynamic) as String
+function videoDetailScreenEpisodeProgressText(media as Dynamic) as String
     if media = invalid then return ""
-    if episodeWatchStatus(media) <> 0 then return ""
+    if videoDetailScreenEpisodeWatchStatus(media) <> 0 then return ""
     if media.progressSeconds = invalid or media.progressSeconds <= 0 then return ""
 
     if media.durationSeconds <> invalid and media.durationSeconds > 0
@@ -1210,10 +1357,10 @@ function episodeProgressText(media as Dynamic) as String
         return StrI(percent).Trim() + "%"
     end if
 
-    return formatEpisodeProgressTime(media.progressSeconds)
+    return videoDetailScreenFormatEpisodeProgressTime(media.progressSeconds)
 end function
 
-function formatEpisodeProgressTime(seconds as Integer) as String
+function videoDetailScreenFormatEpisodeProgressTime(seconds as Integer) as String
     if seconds < 0 then seconds = 0
     minutes = Int(seconds / 60)
     remaining = seconds - (minutes * 60)
@@ -1222,203 +1369,147 @@ function formatEpisodeProgressTime(seconds as Integer) as String
     return StrI(minutes).Trim() + ":" + remainingText
 end function
 
-sub appendWatchedCheck(row as Object)
-    palette = detailUiPalette()
-    check = CreateObject("roSGNode", "Label")
-    check.text = "✓"
-    check.translation = [338, 10]
-    check.width = 26
-    check.horizAlign = "center"
-    check.color = palette.success
-    row.appendChild(check)
-end sub
-
-sub showState(state as String)
-    m.loadingGroup.visible = state = "loading"
-    m.errorGroup.visible = state = "error"
-    m.detailGroup.visible = state = "detail"
-    updateEpisodeScrollChevrons()
-    updateDetailExtrasFocusVisuals()
-end sub
-
-sub showError(message as String)
-    m.errorLabel.text = message
-    m.focusArea = "retry"
-    showState("error")
-end sub
-
-function responseRequiresSignIn(response as Dynamic) as Boolean
-    if response = invalid or type(response) <> "roAssociativeArray" then return false
-    if response.DoesExist("status") and response.status <> invalid and response.status = 401 then return true
-    if response.DoesExist("error") <> true or response.error = invalid then return false
-    errorCode = response.error
-    if type(errorCode) <> "String" and type(errorCode) <> "roString" then return false
-    errorCode = LCase(errorCode)
-    return errorCode = "auth_required" or errorCode = "unauthorized" or errorCode = "invalid_grant"
-end function
-
-sub requestSignInAgain(response as Dynamic)
-    m.top.authRequired = true
-end sub
-
-function currentMedia() as Dynamic
-    if m.seasons.Count() = 0 then return invalid
-
-    if m.currentSeasonIndex < 0 then m.currentSeasonIndex = 0
-    if m.currentSeasonIndex >= m.seasons.Count()
-        m.currentSeasonIndex = m.seasons.Count() - 1
-    end if
-
-    episodes = []
-    if m.seasons[m.currentSeasonIndex].episodes <> invalid
-        episodes = m.seasons[m.currentSeasonIndex].episodes
-    end if
-    if episodes.Count() = 0 then return invalid
-
-    if m.currentEpisodeIndex < 0 then m.currentEpisodeIndex = 0
-    if m.currentEpisodeIndex >= episodes.Count()
-        m.currentEpisodeIndex = episodes.Count() - 1
-    end if
-
-    return episodes[m.currentEpisodeIndex]
-end function
-
-function currentEpisodeIsLast() as Boolean
-    episodes = playableEpisodesForSeason(m.currentSeasonIndex)
-    if episodes.Count() = 0 then return false
-    return m.currentEpisodeIndex >= episodes.Count() - 1
-end function
-
-sub updateSelectedMediaVisuals()
-    palette = detailUiPalette()
-    media = currentMedia()
-    oldVisibleStart = m.visibleEpisodeStart
-    updateVisibleEpisodeWindow()
-    if oldVisibleStart <> m.visibleEpisodeStart
-        renderEpisodeList()
-    end if
-    updateEpisodeScrollChevrons()
-
-    for index = 0 to m.seasonTabBgs.Count() - 1
-        if index = m.currentSeasonIndex
-            m.seasonTabBgs[index].color = palette.primary
+sub videoDetailScreenUpdateEpisodesFocus()
+    for each rowNode in m.episodeRowNodes
+        isFocused = (rowNode.index = m.currentEpisodeIndex) and (m.focusArea = "episodes")
+        if isFocused
+            rowNode.bg.color = "#BFDBFE"
+            rowNode.bg.opacity = 0.55
         else
-            m.seasonTabBgs[index].color = palette.surface
+            rowNode.bg.color = "#FFFFFF"
+            rowNode.bg.opacity = 0.1
         end if
     end for
-
-    for index = 0 to m.episodeRows.Count() - 1
-        rowIndex = m.episodeRowIndexes[index]
-        if rowIndex = m.currentEpisodeIndex
-            m.episodeRows[index].color = palette.surfaceRaised
-        else
-            m.episodeRows[index].color = palette.surface
-        end if
-    end for
-
-    if media = invalid
-        m.playButtonLabel.text = "Unavailable"
-        m.playFocusBg.color = palette.surface
-        m.playButtonLabel.color = "#D1D5DB"
-        updateBookmarkActionFocus()
-        m.episodeCursor.visible = false
-        return
-    end if
-
-    if media.isPlayable
-        m.playButtonLabel.text = "Play"
-        m.playbackErrorLabel.text = ""
-    else
-        m.playButtonLabel.text = "Unavailable"
-        m.playbackErrorLabel.text = "No playable video is available."
-    end if
-
-    if m.focusArea = "play"
-        m.playFocusBg.color = detailButtonColor(true, true)
-    else
-        m.playFocusBg.color = detailButtonColor(false, true)
-    end if
-    m.playButtonLabel.color = palette.primaryText
-    updateDescriptionFocusVisual()
-    updateBookmarkActionFocus()
-    updateDetailExtrasFocusVisuals()
-
-    visibleIndex = m.currentEpisodeIndex - m.visibleEpisodeStart
-    m.episodeCursor.translation = [0, m.episodeListY + (visibleIndex * 84)]
-    m.episodeCursor.visible = m.focusArea = "episodes" and m.episodeRows.Count() > 0
+    videoDetailScreenScrollEpisodesToFocus()
 end sub
 
-sub showNoPlayableMedia()
-    m.noMediaLabel.visible = true
-    m.playbackErrorLabel.text = "No playable video is available."
-    m.episodeCursor.visible = false
-    updateEpisodeScrollChevrons()
+sub videoDetailScreenScrollEpisodesToFocus()
+    if m.episodeRowNodes.Count() = 0 then return
+
+    rowTop = m.currentEpisodeIndex * m.episodeRowStep
+    rowBottom = rowTop + m.episodeRowStep
+
+    currentOffset = m.episodesScrollOffsetY
+    newOffset = currentOffset
+
+    if rowTop < currentOffset
+        newOffset = rowTop
+    else if rowBottom > (currentOffset + m.episodesViewportHeight)
+        newOffset = rowBottom - m.episodesViewportHeight
+    end if
+
+    if newOffset < 0 then newOffset = 0
+    if newOffset <> currentOffset
+        videoDetailScreenAnimateEpisodesScroll(currentOffset, newOffset)
+        m.episodesScrollOffsetY = newOffset
+    end if
 end sub
 
-sub moveEpisode(delta as Integer)
-    if m.seasons.Count() = 0 then return
-    if m.currentSeasonIndex < 0 or m.currentSeasonIndex >= m.seasons.Count() then return
-
-    episodes = []
-    if m.seasons[m.currentSeasonIndex].episodes <> invalid
-        episodes = m.seasons[m.currentSeasonIndex].episodes
+sub videoDetailScreenAnimateEpisodesScroll(fromY as Integer, toY as Integer)
+    if m.episodesScrollAnimation = invalid
+        animation = CreateObject("roSGNode", "Animation")
+        animation.duration = 0.25
+        animation.easeFunction = "inOutQuad"
+        interpolator = CreateObject("roSGNode", "Vector2DFieldInterpolator")
+        interpolator.key = [0, 1]
+        interpolator.fieldToInterp = "episodesHost.translation"
+        animation.appendChild(interpolator)
+        m.top.appendChild(animation)
+        m.episodesScrollAnimation = animation
+        m.episodesScrollInterpolator = interpolator
     end if
+
+    m.episodesScrollInterpolator.keyValue = [[0, -fromY], [0, -toY]]
+    m.episodesScrollAnimation.control = "start"
+end sub
+
+' Scrolls the foreground content (detailScrollHost — hero text/actions and
+' below-hero seasons/episodes, not just episodesHost within its own small
+' clip) up by the hero's full height when entering the episode list, and
+' back down when leaving it. The backdrop image/scrim stay fixed (they're
+' siblings of detailScrollHost, not inside it) so they read as a static
+' page background rather than scrolling off with the foreground. Frees up
+' nearly the entire screen for episodes instead of the ~284px strip below a
+' permanently pinned hero. Toggled from every focusArea transition into/out
+' of "episodes".
+sub videoDetailScreenSetHeroScrolled(scrolled as Boolean)
+    if scrolled = m.heroScrolled then return
+    m.heroScrolled = scrolled
+
+    fromY = 0
+    toY = 0
+    if scrolled
+        toY = -m.heroScrollOffset
+        m.episodesViewportHeight = m.episodesViewportHeightExpanded
+    else
+        fromY = -m.heroScrollOffset
+        m.episodesViewportHeight = m.episodesViewportHeightDefault
+    end if
+    m.episodesClipHost.clippingRect = [0, 0, 1152, m.episodesViewportHeight]
+
+    if m.heroScrollAnimation = invalid
+        animation = CreateObject("roSGNode", "Animation")
+        animation.duration = 0.3
+        animation.easeFunction = "inOutQuad"
+        interpolator = CreateObject("roSGNode", "Vector2DFieldInterpolator")
+        interpolator.key = [0, 1]
+        interpolator.fieldToInterp = "detailScrollHost.translation"
+        animation.appendChild(interpolator)
+        m.top.appendChild(animation)
+        m.heroScrollAnimation = animation
+        m.heroScrollInterpolator = interpolator
+    end if
+
+    m.heroScrollInterpolator.keyValue = [[0, fromY], [0, toY]]
+    m.heroScrollAnimation.control = "start"
+
+    videoDetailScreenScrollEpisodesToFocus()
+end sub
+
+sub videoDetailScreenMoveEpisode(delta as Integer)
+    episodes = videoDetailScreenPlayableEpisodesForSeason(m.currentSeasonIndex)
     if episodes.Count() = 0 then return
-
     nextIndex = m.currentEpisodeIndex + delta
     if nextIndex < 0 then nextIndex = 0
     if nextIndex >= episodes.Count() then nextIndex = episodes.Count() - 1
-
+    if nextIndex = m.currentEpisodeIndex then return
     m.currentEpisodeIndex = nextIndex
-    m.playbackErrorLabel.text = ""
-    updateSelectedMediaVisuals()
+    videoDetailScreenSetStatusMessage("")
+    videoDetailScreenUpdateEpisodesFocus()
+    videoDetailScreenRenderActions()
 end sub
 
-sub moveSeason(delta as Integer)
-    if m.seasons.Count() <= 1 then return
-
-    nextIndex = m.currentSeasonIndex + delta
-    if nextIndex < 0 then nextIndex = 0
-    if nextIndex >= m.seasons.Count() then nextIndex = m.seasons.Count() - 1
-    if nextIndex = m.currentSeasonIndex then return
-
-    m.currentSeasonIndex = nextIndex
-    m.currentEpisodeIndex = 0
-    m.playbackErrorLabel.text = ""
-    renderEpisodeList()
-    updateSelectedMediaVisuals()
+' Which of contentSection/episodesSection is visible below the hero, driven
+' purely by m.focusArea — content (ratings/info at minimum, almost always
+' available) is now relevant for every item, not just series, so there's no
+' isSeries branch here anymore (Stage 1 had one).
+sub videoDetailScreenApplySectionVisibility()
+    m.contentSection.visible = m.focusArea <> "episodes"
+    m.episodesSection.visible = m.focusArea = "episodes"
 end sub
 
-sub toggleCurrentEpisodeWatched()
+' ---------------------------------------------------------------------------
+' Watched toggle (options/* key on a focused episode)
+' ---------------------------------------------------------------------------
+
+sub videoDetailScreenToggleCurrentEpisodeWatched()
     if m.pendingWatchedToggleKey <> "" then return
     if m.item = invalid or m.item.itemId <= 0 then return
 
-    media = currentMedia()
-    if media = invalid
-        m.playbackErrorLabel.text = "Unable to update watched status."
-        return
-    end if
+    media = videoDetailScreenCurrentMedia()
+    if media = invalid then return
 
     seasonNumber = 0
     if media.seasonNumber <> invalid then seasonNumber = media.seasonNumber
-    videoNumber = episodeVideoNumber(media)
-    if videoNumber <= 0
-        m.playbackErrorLabel.text = "Unable to update watched status."
-        return
-    end if
+    videoNumber = videoDetailScreenEpisodeVideoNumber(media)
+    if videoNumber <= 0 then return
 
-    targetWatched = episodeWatchStatus(media) <> 1
-    m.pendingWatchedToggleKey = watchedToggleKey(seasonNumber, videoNumber)
-    m.playbackErrorLabel.text = "Updating watched status..."
+    targetWatched = videoDetailScreenEpisodeWatchStatus(media) <> 1
+    m.pendingWatchedToggleKey = videoDetailScreenWatchedToggleKey(seasonNumber, videoNumber)
 
     task = CreateObject("roSGNode", "ContentTask")
     task.command = "toggleEpisodeWatched"
-    task.request = {
-        itemId: m.item.itemId
-        seasonNumber: seasonNumber
-        videoNumber: videoNumber
-        watched: targetWatched
-    }
+    task.request = { itemId: m.item.itemId, seasonNumber: seasonNumber, videoNumber: videoNumber, watched: targetWatched }
     task.observeField("response", "onToggleEpisodeWatchedResponse")
     task.control = "RUN"
     m.toggleWatchedTask = task
@@ -1431,26 +1522,15 @@ sub onToggleEpisodeWatchedResponse(event as Object)
     m.pendingWatchedToggleKey = ""
 
     if response = invalid or response.ok <> true
-        if responseRequiresSignIn(response)
-            requestSignInAgain(response)
-            return
-        end if
-        message = "Unable to update watched status."
-        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
-        m.playbackErrorLabel.text = message
+        if videoDetailScreenResponseRequiresSignIn(response) then videoDetailScreenRequestSignInAgain(response)
         return
     end if
 
-    if watchedToggleKey(response.seasonNumber, response.videoNumber) <> pendingKey then return
-    applyEpisodeWatchedState(response.seasonNumber, response.videoNumber, response.watched)
-    if response.watched = true
-        m.playbackErrorLabel.text = "Marked watched."
-    else
-        m.playbackErrorLabel.text = "Marked unwatched."
-    end if
+    if videoDetailScreenWatchedToggleKey(response.seasonNumber, response.videoNumber) <> pendingKey then return
+    videoDetailScreenApplyEpisodeWatchedState(response.seasonNumber, response.videoNumber, response.watched)
 end sub
 
-sub applyEpisodeWatchedState(seasonNumber as Integer, videoNumber as Integer, watched as Boolean)
+sub videoDetailScreenApplyEpisodeWatchedState(seasonNumber as Integer, videoNumber as Integer, watched as Boolean)
     for seasonIndex = 0 to m.seasons.Count() - 1
         season = m.seasons[seasonIndex]
         seasonMatches = true
@@ -1459,7 +1539,7 @@ sub applyEpisodeWatchedState(seasonNumber as Integer, videoNumber as Integer, wa
         if season <> invalid and season.episodes <> invalid and seasonMatches
             for episodeIndex = 0 to season.episodes.Count() - 1
                 episode = season.episodes[episodeIndex]
-                if episode <> invalid and episodeVideoNumber(episode) = videoNumber
+                if episode <> invalid and videoDetailScreenEpisodeVideoNumber(episode) = videoNumber
                     episode.watched = watched
                     if watched
                         episode.watchStatus = 1
@@ -1467,8 +1547,10 @@ sub applyEpisodeWatchedState(seasonNumber as Integer, videoNumber as Integer, wa
                         episode.watchStatus = -1
                     end if
                     episode.progressSeconds = 0
-                    if seasonIndex = m.currentSeasonIndex then renderEpisodeList()
-                    updateSelectedMediaVisuals()
+                    if seasonIndex = m.currentSeasonIndex then videoDetailScreenRenderEpisodes()
+                    ' Full content rebuild refreshes the seasons row's
+                    ' unwatched-count badges.
+                    videoDetailScreenRenderContent()
                     return
                 end if
             end for
@@ -1476,28 +1558,33 @@ sub applyEpisodeWatchedState(seasonNumber as Integer, videoNumber as Integer, wa
     end for
 end sub
 
-sub startSelectedPlayback()
-    media = currentMedia()
+' ---------------------------------------------------------------------------
+' Play — preflight (refresh stream links), payload shape shared with the
+' next-episode/season-carousel contract below.
+' ---------------------------------------------------------------------------
+
+sub videoDetailScreenStartSelectedPlayback()
+    media = videoDetailScreenCurrentMedia()
     if media = invalid
-        m.playbackErrorLabel.text = "No playable video is available."
+        videoDetailScreenSetStatusMessage("Видео недоступно.")
         return
     end if
     if media.isPlayable <> true
-        m.playbackErrorLabel.text = "No playable video is available."
+        videoDetailScreenSetStatusMessage("Видео недоступно.")
         return
     end if
 
     streamUrl = ""
     if media.streamUrl <> invalid then streamUrl = media.streamUrl
     if streamUrl = ""
-        m.playbackErrorLabel.text = "No playable video is available."
+        videoDetailScreenSetStatusMessage("Видео недоступно.")
         return
     end if
 
-    startPlaybackPreflight(media)
+    videoDetailScreenStartPlaybackPreflight(media)
 end sub
 
-function playbackPayloadForMedia(media as Object) as Object
+function videoDetailScreenPlaybackPayloadForMedia(media as Object) as Object
     videoNumber = 1
     if media.videoNumber <> invalid then videoNumber = media.videoNumber else videoNumber = media.episodeNumber
 
@@ -1519,11 +1606,11 @@ function playbackPayloadForMedia(media as Object) as Object
         qualityOptions: media.qualityOptions
         audioTracks: media.audioTracks
         subtitleTracks: media.subtitleTracks
-        seasonEpisodes: seasonEpisodesForMedia(media)
+        seasonEpisodes: videoDetailScreenSeasonEpisodesForMedia(media)
     }
 end function
 
-function seasonEpisodesForMedia(media as Dynamic) as Object
+function videoDetailScreenSeasonEpisodesForMedia(media as Dynamic) as Object
     episodes = []
     if media = invalid or m.seasons = invalid then return episodes
     if media.seasonNumber = invalid or media.seasonNumber <= 0 then return episodes
@@ -1533,7 +1620,7 @@ function seasonEpisodesForMedia(media as Dynamic) as Object
         if season <> invalid and season.number <> invalid and season.number = media.seasonNumber
             if season.episodes = invalid then return episodes
             for each episode in season.episodes
-                payload = seasonCarouselEpisodePayload(episode)
+                payload = videoDetailScreenSeasonCarouselEpisodePayload(episode)
                 if payload <> invalid then episodes.Push(payload)
             end for
             return episodes
@@ -1543,7 +1630,7 @@ function seasonEpisodesForMedia(media as Dynamic) as Object
     return episodes
 end function
 
-function seasonCarouselEpisodePayload(episode as Dynamic) as Dynamic
+function videoDetailScreenSeasonCarouselEpisodePayload(episode as Dynamic) as Dynamic
     if episode = invalid then return invalid
 
     videoNumber = 1
@@ -1572,8 +1659,8 @@ function seasonCarouselEpisodePayload(episode as Dynamic) as Dynamic
     }
 end function
 
-sub startPlaybackPreflight(media as Object)
-    payload = playbackPayloadForMedia(media)
+sub videoDetailScreenStartPlaybackPreflight(media as Object)
+    payload = videoDetailScreenPlaybackPayloadForMedia(media)
     mediaId = 0
     if media.mediaId <> invalid then mediaId = media.mediaId
 
@@ -1582,13 +1669,11 @@ sub startPlaybackPreflight(media as Object)
         return
     end if
 
-    if m.pendingPlaybackMediaId = mediaId
-        return
-    end if
+    if m.pendingPlaybackMediaId = mediaId then return
 
     m.pendingPlaybackMediaId = mediaId
     m.pendingPlaybackPayload = payload
-    m.playbackErrorLabel.text = "Preparing video..."
+    videoDetailScreenSetStatusMessage("Подготовка видео...")
 
     task = CreateObject("roSGNode", "ContentTask")
     task.command = "refreshMediaLinks"
@@ -1608,8 +1693,8 @@ sub onMediaLinksRefreshResponse(event as Object)
 
     if pendingMediaId <= 0 then return
 
-    if responseRequiresSignIn(response)
-        requestSignInAgain(response)
+    if videoDetailScreenResponseRequiresSignIn(response)
+        videoDetailScreenRequestSignInAgain(response)
         return
     end if
 
@@ -1617,49 +1702,62 @@ sub onMediaLinksRefreshResponse(event as Object)
         responseMediaId = 0
         if response.media.mediaId <> invalid then responseMediaId = response.media.mediaId
         if responseMediaId <> pendingMediaId then return
-        m.playbackErrorLabel.text = ""
-        m.top.playbackRequested = playbackPayloadForMedia(response.media)
+        videoDetailScreenSetStatusMessage("")
+        m.top.playbackRequested = videoDetailScreenPlaybackPayloadForMedia(response.media)
         return
     end if
 
     if fallbackPayload <> invalid and fallbackPayload.streamUrl <> invalid and fallbackPayload.streamUrl <> ""
-        m.playbackErrorLabel.text = ""
+        videoDetailScreenSetStatusMessage("")
         m.top.playbackRequested = fallbackPayload
         return
     end if
 
-    message = "No playable video is available."
+    message = "Видео недоступно."
     if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
-    m.playbackErrorLabel.text = message
+    videoDetailScreenSetStatusMessage(message)
 end sub
+
+sub videoDetailScreenCancelPlaybackPreflight()
+    if m.mediaLinksTask <> invalid then m.mediaLinksTask.control = "STOP"
+    m.mediaLinksTask = invalid
+    m.pendingPlaybackMediaId = 0
+    m.pendingPlaybackPayload = invalid
+    if m.nextMediaLinksTask <> invalid then m.nextMediaLinksTask.control = "STOP"
+    m.nextMediaLinksTask = invalid
+    m.pendingNextPlaybackMediaId = 0
+    m.pendingNextPlaybackPayload = invalid
+end sub
+
+' ---------------------------------------------------------------------------
+' Next-episode / in-player season-carousel contract with PlayerScreen.brs —
+' ported verbatim (rename only). UI-state-independent: only reads
+' m.seasons/m.item, never m.focusArea, so this rewrite doesn't affect it.
+' ---------------------------------------------------------------------------
 
 sub onNextPlaybackRequested(event as Object)
     request = event.getData()
-    reason = nextPlaybackRequestReason(request)
+    reason = videoDetailScreenNextPlaybackRequestReason(request)
     if reason = "seasonCarousel"
-        media = requestedPlayableMedia(request)
+        media = videoDetailScreenRequestedPlayableMedia(request)
     else
-        media = nextPlayableMediaAfter(request)
+        media = videoDetailScreenNextPlayableMediaAfter(request)
     end if
     if media = invalid
-        m.top.nextPlayback = {
-            ok: false
-            reason: reason
-            message: "No next episode is available."
-        }
+        m.top.nextPlayback = { ok: false, reason: reason, message: "Следующий эпизод недоступен." }
         return
     end if
 
-    prepareNextPlaybackPreflight(media, request)
+    videoDetailScreenPrepareNextPlaybackPreflight(media, request)
 end sub
 
-function nextPlayableMediaAfter(request as Dynamic) as Dynamic
+function videoDetailScreenNextPlayableMediaAfter(request as Dynamic) as Dynamic
     if request = invalid or m.seasons = invalid or m.seasons.Count() = 0 then return invalid
 
-    requestMediaId = nextPlaybackIntegerField(request, "mediaId", 0)
-    requestSeasonNumber = nextPlaybackIntegerField(request, "seasonNumber", 0)
-    requestVideoNumber = nextPlaybackIntegerField(request, "videoNumber", 0)
-    requestEpisodeNumber = nextPlaybackIntegerField(request, "episodeNumber", requestVideoNumber)
+    requestMediaId = videoDetailScreenNextPlaybackIntegerField(request, "mediaId", 0)
+    requestSeasonNumber = videoDetailScreenNextPlaybackIntegerField(request, "seasonNumber", 0)
+    requestVideoNumber = videoDetailScreenNextPlaybackIntegerField(request, "videoNumber", 0)
+    requestEpisodeNumber = videoDetailScreenNextPlaybackIntegerField(request, "episodeNumber", requestVideoNumber)
 
     foundCurrent = false
     for seasonIndex = 0 to m.seasons.Count() - 1
@@ -1671,7 +1769,7 @@ function nextPlayableMediaAfter(request as Dynamic) as Dynamic
             episode = episodes[episodeIndex]
             if foundCurrent and episode <> invalid and episode.isPlayable = true then return episode
 
-            if nextPlaybackMatchesMedia(episode, requestMediaId, requestSeasonNumber, requestVideoNumber, requestEpisodeNumber)
+            if videoDetailScreenNextPlaybackMatchesMedia(episode, requestMediaId, requestSeasonNumber, requestVideoNumber, requestEpisodeNumber)
                 foundCurrent = true
             end if
         end for
@@ -1680,13 +1778,13 @@ function nextPlayableMediaAfter(request as Dynamic) as Dynamic
     return invalid
 end function
 
-function requestedPlayableMedia(request as Dynamic) as Dynamic
+function videoDetailScreenRequestedPlayableMedia(request as Dynamic) as Dynamic
     if request = invalid or m.seasons = invalid or m.seasons.Count() = 0 then return invalid
 
-    requestMediaId = nextPlaybackIntegerField(request, "mediaId", 0)
-    requestSeasonNumber = nextPlaybackIntegerField(request, "seasonNumber", 0)
-    requestVideoNumber = nextPlaybackIntegerField(request, "videoNumber", 0)
-    requestEpisodeNumber = nextPlaybackIntegerField(request, "episodeNumber", requestVideoNumber)
+    requestMediaId = videoDetailScreenNextPlaybackIntegerField(request, "mediaId", 0)
+    requestSeasonNumber = videoDetailScreenNextPlaybackIntegerField(request, "seasonNumber", 0)
+    requestVideoNumber = videoDetailScreenNextPlaybackIntegerField(request, "videoNumber", 0)
+    requestEpisodeNumber = videoDetailScreenNextPlaybackIntegerField(request, "episodeNumber", requestVideoNumber)
 
     for seasonIndex = 0 to m.seasons.Count() - 1
         season = m.seasons[seasonIndex]
@@ -1695,7 +1793,7 @@ function requestedPlayableMedia(request as Dynamic) as Dynamic
 
         for episodeIndex = 0 to episodes.Count() - 1
             episode = episodes[episodeIndex]
-            if episode <> invalid and episode.isPlayable = true and nextPlaybackMatchesMedia(episode, requestMediaId, requestSeasonNumber, requestVideoNumber, requestEpisodeNumber)
+            if episode <> invalid and episode.isPlayable = true and videoDetailScreenNextPlaybackMatchesMedia(episode, requestMediaId, requestSeasonNumber, requestVideoNumber, requestEpisodeNumber)
                 return episode
             end if
         end for
@@ -1704,7 +1802,7 @@ function requestedPlayableMedia(request as Dynamic) as Dynamic
     return invalid
 end function
 
-function nextPlaybackMatchesMedia(media as Dynamic, requestMediaId as Integer, requestSeasonNumber as Integer, requestVideoNumber as Integer, requestEpisodeNumber as Integer) as Boolean
+function videoDetailScreenNextPlaybackMatchesMedia(media as Dynamic, requestMediaId as Integer, requestSeasonNumber as Integer, requestVideoNumber as Integer, requestEpisodeNumber as Integer) as Boolean
     if media = invalid then return false
     if requestMediaId > 0 and media.mediaId <> invalid and media.mediaId = requestMediaId then return true
 
@@ -1721,9 +1819,9 @@ function nextPlaybackMatchesMedia(media as Dynamic, requestMediaId as Integer, r
     return requestEpisodeNumber > 0 and mediaEpisodeNumber = requestEpisodeNumber
 end function
 
-sub prepareNextPlaybackPreflight(media as Object, request as Dynamic)
-    payload = playbackPayloadForMedia(media)
-    reason = nextPlaybackRequestReason(request)
+sub videoDetailScreenPrepareNextPlaybackPreflight(media as Object, request as Dynamic)
+    payload = videoDetailScreenPlaybackPayloadForMedia(media)
+    reason = videoDetailScreenNextPlaybackRequestReason(request)
     payload.requestReason = reason
     mediaId = 0
     if media.mediaId <> invalid then mediaId = media.mediaId
@@ -1747,7 +1845,7 @@ end sub
 sub onNextMediaLinksRefreshResponse(event as Object)
     response = event.getData()
     fallbackPayload = m.pendingNextPlaybackPayload
-    reason = nextPlaybackRequestReasonFromPayload(fallbackPayload)
+    reason = videoDetailScreenNextPlaybackRequestReasonFromPayload(fallbackPayload)
     pendingMediaId = m.pendingNextPlaybackMediaId
     m.pendingNextPlaybackMediaId = 0
     m.pendingNextPlaybackPayload = invalid
@@ -1755,8 +1853,8 @@ sub onNextMediaLinksRefreshResponse(event as Object)
 
     if pendingMediaId <= 0 then return
 
-    if responseRequiresSignIn(response)
-        requestSignInAgain(response)
+    if videoDetailScreenResponseRequiresSignIn(response)
+        videoDetailScreenRequestSignInAgain(response)
         return
     end if
 
@@ -1764,14 +1862,14 @@ sub onNextMediaLinksRefreshResponse(event as Object)
         responseMediaId = 0
         if response.media.mediaId <> invalid then responseMediaId = response.media.mediaId
         if responseMediaId = pendingMediaId
-            m.top.nextPlayback = { ok: true, playback: playbackPayloadForMedia(response.media), reason: reason }
+            m.top.nextPlayback = { ok: true, playback: videoDetailScreenPlaybackPayloadForMedia(response.media), reason: reason }
             return
         end if
         if fallbackPayload <> invalid and fallbackPayload.streamUrl <> invalid and fallbackPayload.streamUrl <> ""
             m.top.nextPlayback = { ok: true, playback: fallbackPayload, reason: reason }
             return
         end if
-        message = "No playable next episode is available."
+        message = "Следующий эпизод недоступен."
         if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
         m.top.nextPlayback = { ok: false, message: message, reason: reason }
         return
@@ -1782,26 +1880,26 @@ sub onNextMediaLinksRefreshResponse(event as Object)
         return
     end if
 
-    message = "No playable next episode is available."
+    message = "Следующий эпизод недоступен."
     if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
     m.top.nextPlayback = { ok: false, message: message, reason: reason }
 end sub
 
-function nextPlaybackRequestReason(request as Dynamic) as String
+function videoDetailScreenNextPlaybackRequestReason(request as Dynamic) as String
     if request = invalid or type(request) <> "roAssociativeArray" then return ""
     if request.DoesExist("reason") <> true or request.reason = invalid then return ""
     if type(request.reason) = "String" or type(request.reason) = "roString" then return request.reason
     return ""
 end function
 
-function nextPlaybackRequestReasonFromPayload(payload as Dynamic) as String
+function videoDetailScreenNextPlaybackRequestReasonFromPayload(payload as Dynamic) as String
     if payload = invalid or type(payload) <> "roAssociativeArray" then return ""
     if payload.DoesExist("requestReason") <> true or payload.requestReason = invalid then return ""
     if type(payload.requestReason) = "String" or type(payload.requestReason) = "roString" then return payload.requestReason
     return ""
 end function
 
-function nextPlaybackIntegerField(source as Dynamic, key as String, fallback as Integer) as Integer
+function videoDetailScreenNextPlaybackIntegerField(source as Dynamic, key as String, fallback as Integer) as Integer
     if source = invalid or type(source) <> "roAssociativeArray" then return fallback
     if source.DoesExist(key) <> true or source[key] = invalid then return fallback
     value = source[key]
@@ -1811,60 +1909,254 @@ function nextPlaybackIntegerField(source as Dynamic, key as String, fallback as 
     return fallback
 end function
 
-sub cancelPlaybackPreflight()
-    if m.mediaLinksTask <> invalid then m.mediaLinksTask.control = "STOP"
-    m.mediaLinksTask = invalid
-    m.pendingPlaybackMediaId = 0
-    m.pendingPlaybackPayload = invalid
-    if m.nextMediaLinksTask <> invalid then m.nextMediaLinksTask.control = "STOP"
-    m.nextMediaLinksTask = invalid
-    m.pendingNextPlaybackMediaId = 0
-    m.pendingNextPlaybackPayload = invalid
+' ---------------------------------------------------------------------------
+' Bookmark folder overlay — restyled to the light dialog aesthetic, ported
+' behavior verbatim.
+' ---------------------------------------------------------------------------
+
+sub videoDetailScreenLoadItemBookmarkFolders()
+    if m.item = invalid or m.item.itemId <= 0 then return
+
+    task = CreateObject("roSGNode", "ContentTask")
+    task.command = "loadItemBookmarkFolders"
+    task.request = { itemId: m.item.itemId }
+    task.observeField("response", "onItemBookmarkFoldersResponse")
+    task.control = "RUN"
+    m.itemBookmarkFoldersTask = task
 end sub
+
+sub onItemBookmarkFoldersResponse(event as Object)
+    response = event.getData()
+    if response = invalid or response.ok <> true
+        if videoDetailScreenResponseRequiresSignIn(response) then videoDetailScreenRequestSignInAgain(response)
+        return
+    end if
+    m.itemBookmarkFolders = []
+    if response.folders <> invalid then m.itemBookmarkFolders = response.folders
+    videoDetailScreenRenderActions()
+    if m.bookmarkOverlayOpen then videoDetailScreenRenderBookmarkOverlayFolders()
+end sub
+
+sub videoDetailScreenOpenBookmarkOverlay()
+    if m.item = invalid or m.item.itemId <= 0 then return
+    m.bookmarkOverlayOpen = true
+    m.bookmarkOverlayGroup.visible = true
+    m.bookmarkOverlayStatusLabel.text = "Загрузка папок..."
+    m.bookmarkFolders = []
+    videoDetailScreenRenderBookmarkOverlayFolders()
+    videoDetailScreenLoadBookmarkFoldersForOverlay()
+end sub
+
+sub videoDetailScreenCloseBookmarkOverlay()
+    m.bookmarkOverlayOpen = false
+    m.bookmarkOverlayGroup.visible = false
+end sub
+
+sub videoDetailScreenLoadBookmarkFoldersForOverlay()
+    task = CreateObject("roSGNode", "ContentTask")
+    task.command = "loadBookmarkFolders"
+    task.request = {}
+    task.observeField("response", "onBookmarkOverlayFoldersResponse")
+    task.control = "RUN"
+    m.bookmarkOverlayTask = task
+end sub
+
+sub onBookmarkOverlayFoldersResponse(event as Object)
+    response = event.getData()
+    if response = invalid or response.ok <> true
+        if videoDetailScreenResponseRequiresSignIn(response)
+            videoDetailScreenRequestSignInAgain(response)
+            return
+        end if
+        message = "Не удалось загрузить папки закладок."
+        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
+        m.bookmarkOverlayStatusLabel.text = message
+        return
+    end if
+
+    m.bookmarkFolders = []
+    if response.folders <> invalid then m.bookmarkFolders = response.folders
+    if m.selectedBookmarkFolderIndex >= m.bookmarkFolders.Count() then m.selectedBookmarkFolderIndex = m.bookmarkFolders.Count() - 1
+    if m.selectedBookmarkFolderIndex < 0 then m.selectedBookmarkFolderIndex = 0
+
+    if m.bookmarkFolders.Count() = 0
+        m.bookmarkOverlayStatusLabel.text = "Пока нет папок закладок."
+    else
+        m.bookmarkOverlayStatusLabel.text = "Выберите папку"
+    end if
+    videoDetailScreenRenderBookmarkOverlayFolders()
+end sub
+
+sub videoDetailScreenRenderBookmarkOverlayFolders()
+    if m.bookmarkOverlayFoldersHost = invalid then return
+    theme = UiThemeLight()
+    childCount = m.bookmarkOverlayFoldersHost.getChildCount()
+    if childCount > 0 then m.bookmarkOverlayFoldersHost.removeChildrenIndex(childCount, 0)
+    m.bookmarkOverlayRowNodes = []
+
+    maxRows = m.bookmarkFolders.Count()
+    if maxRows > 6 then maxRows = 6
+    for index = 0 to maxRows - 1
+        folder = m.bookmarkFolders[index]
+        row = CreateObject("roSGNode", "Group")
+        row.translation = [0, index * 50]
+
+        bg = CreateObject("roSGNode", "Rectangle")
+        bg.width = 380
+        bg.height = 42
+        bg.color = theme.surfaceAlt
+        row.appendChild(bg)
+
+        marker = CreateObject("roSGNode", "Label")
+        if videoDetailScreenBookmarkFolderContainsItem(folder.folderId)
+            marker.text = "Вкл"
+        else
+            marker.text = "Выкл"
+        end if
+        marker.translation = [14, 11]
+        marker.width = 44
+        marker.color = theme.muted
+        row.appendChild(marker)
+
+        label = CreateObject("roSGNode", "Label")
+        label.text = folder.title
+        label.translation = [64, 11]
+        label.width = 236
+        label.color = theme.text
+        row.appendChild(label)
+
+        count = CreateObject("roSGNode", "Label")
+        count.text = videoDetailScreenBookmarkFolderCountText(folder)
+        count.translation = [300, 11]
+        count.width = 64
+        count.color = theme.muted
+        count.horizAlign = "right"
+        row.appendChild(count)
+
+        m.bookmarkOverlayFoldersHost.appendChild(row)
+        m.bookmarkOverlayRowNodes.Push(bg)
+    end for
+
+    videoDetailScreenUpdateBookmarkOverlayFocus()
+end sub
+
+function videoDetailScreenBookmarkFolderContainsItem(folderId as Integer) as Boolean
+    if m.itemBookmarkFolders = invalid then return false
+    for each folder in m.itemBookmarkFolders
+        if folder <> invalid and folder.folderId = folderId then return true
+    end for
+    return false
+end function
+
+function videoDetailScreenBookmarkFolderCountText(folder as Dynamic) as String
+    if folder = invalid or folder.count = invalid then return ""
+    return StrI(folder.count).Trim()
+end function
+
+sub videoDetailScreenUpdateBookmarkOverlayFocus()
+    theme = UiThemeLight()
+    for index = 0 to m.bookmarkOverlayRowNodes.Count() - 1
+        if index = m.selectedBookmarkFolderIndex
+            m.bookmarkOverlayRowNodes[index].color = theme.surfaceFocus
+        else
+            m.bookmarkOverlayRowNodes[index].color = theme.surfaceAlt
+        end if
+    end for
+end sub
+
+sub videoDetailScreenMoveBookmarkOverlayFolder(delta as Integer)
+    if m.bookmarkFolders.Count() = 0 then return
+    nextIndex = m.selectedBookmarkFolderIndex + delta
+    if nextIndex < 0 then nextIndex = 0
+    maxIndex = m.bookmarkFolders.Count() - 1
+    if maxIndex > 5 then maxIndex = 5
+    if nextIndex > maxIndex then nextIndex = maxIndex
+    m.selectedBookmarkFolderIndex = nextIndex
+    videoDetailScreenUpdateBookmarkOverlayFocus()
+end sub
+
+sub videoDetailScreenToggleSelectedBookmarkFolder()
+    if m.item = invalid or m.bookmarkFolders.Count() = 0 then return
+    folder = m.bookmarkFolders[m.selectedBookmarkFolderIndex]
+    m.bookmarkOverlayStatusLabel.text = "Обновление закладки..."
+
+    task = CreateObject("roSGNode", "ContentTask")
+    task.command = "toggleItemBookmark"
+    task.request = { itemId: m.item.itemId, folderId: folder.folderId }
+    task.observeField("response", "onToggleItemBookmarkResponse")
+    task.control = "RUN"
+    m.toggleBookmarkTask = task
+end sub
+
+sub onToggleItemBookmarkResponse(event as Object)
+    response = event.getData()
+    if response = invalid or response.ok <> true
+        if videoDetailScreenResponseRequiresSignIn(response)
+            videoDetailScreenRequestSignInAgain(response)
+            return
+        end if
+        message = "Не удалось обновить закладку."
+        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
+        m.bookmarkOverlayStatusLabel.text = message
+        return
+    end if
+
+    m.bookmarkOverlayStatusLabel.text = "Закладка обновлена."
+    videoDetailScreenLoadItemBookmarkFolders()
+    videoDetailScreenLoadBookmarkFoldersForOverlay()
+end sub
+
+' ---------------------------------------------------------------------------
+' onKeyEvent — focusArea state machine: "actions" / "description" /
+' "content" / "episodes"
+' ---------------------------------------------------------------------------
 
 function onKeyEvent(key as String, press as Boolean) as Boolean
     if press <> true then return false
 
+    if m.descriptionOverlayOpen
+        if key = "back" or key = "OK" then videoDetailScreenCloseDescriptionOverlay()
+        return true
+    end if
+
     if m.bookmarkOverlayOpen
         if key = "back"
-            closeBookmarkOverlay()
-            return true
+            videoDetailScreenCloseBookmarkOverlay()
         else if key = "up"
-            moveBookmarkOverlayFolder(-1)
-            return true
+            videoDetailScreenMoveBookmarkOverlayFolder(-1)
         else if key = "down"
-            moveBookmarkOverlayFolder(1)
-            return true
+            videoDetailScreenMoveBookmarkOverlayFolder(1)
         else if key = "OK"
-            toggleSelectedBookmarkFolder()
-            return true
+            videoDetailScreenToggleSelectedBookmarkFolder()
         end if
         return true
     end if
 
-    if m.descriptionOverlayGroup.visible
-        if key = "back" or key = "OK"
-            closeDescriptionOverlay()
-            return true
-        else if key = "up"
-            scrollDescriptionOverlay(-1)
-            return true
-        else if key = "down"
-            scrollDescriptionOverlay(1)
-            return true
-        end if
+    ' Back from the episode list (reached via OK on a season tile) pops back
+    ' to the content row list instead of leaving the screen — a deliberate,
+    ' one-off exception to this app's usual "Back always exits" convention,
+    ' since episodes here is a genuine drill-down from the seasons row, not
+    ' a peer state. Doesn't apply to a single-season/movie's episode list,
+    ' which has no seasons row to pop to.
+    if key = "back" and m.focusArea = "episodes" and m.hasSeasonsRow
+        videoDetailScreenCancelPlaybackPreflight()
+        m.focusArea = "content"
+        videoDetailScreenSetHeroScrolled(false)
+        videoDetailScreenApplySectionVisibility()
+        videoDetailScreenUpdateEpisodesFocus()
+        videoDetailScreenUpdateContentFocus()
         return true
     end if
 
     if key = "back"
-        cancelPlaybackPreflight()
+        videoDetailScreenCancelPlaybackPreflight()
         m.top.backRequested = true
         return true
     end if
 
     if m.errorGroup.visible
         if key = "OK"
-            loadDetail()
+            videoDetailScreenLoadDetail()
             return true
         end if
         return false
@@ -1872,143 +2164,106 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
 
     if m.detailGroup.visible <> true then return false
 
+    if m.focusArea = "actions"
+        if key = "up"
+            if m.selectedActionIndex > 0
+                m.selectedActionIndex = m.selectedActionIndex - 1
+                videoDetailScreenUpdateActionsFocus()
+            else
+                m.focusArea = "description"
+                videoDetailScreenUpdateActionsFocus()
+                videoDetailScreenUpdateDescriptionFocus()
+            end if
+            return true
+        else if key = "down"
+            if m.selectedActionIndex < m.actionRows.Count() - 1
+                m.selectedActionIndex = m.selectedActionIndex + 1
+                videoDetailScreenUpdateActionsFocus()
+            else if m.contentRows.Count() > 0
+                m.focusArea = "content"
+                videoDetailScreenApplySectionVisibility()
+                videoDetailScreenUpdateActionsFocus()
+                videoDetailScreenUpdateContentFocus()
+            end if
+            return true
+        else if key = "OK"
+            actionId = m.actionRows[m.selectedActionIndex].id
+            if actionId = "play"
+                videoDetailScreenStartSelectedPlayback()
+            else if actionId = "trailer"
+                videoDetailScreenStartTrailerPlayback()
+            else if actionId = "bookmark"
+                videoDetailScreenOpenBookmarkOverlay()
+            end if
+            return true
+        end if
+        return false
+    end if
+
+    if m.focusArea = "description"
+        if key = "down"
+            m.focusArea = "actions"
+            m.selectedActionIndex = 0
+            videoDetailScreenUpdateDescriptionFocus()
+            videoDetailScreenUpdateActionsFocus()
+            return true
+        else if key = "OK"
+            videoDetailScreenOpenDescriptionOverlay()
+            return true
+        end if
+        return false
+    end if
+
+    if m.focusArea = "content"
+        if key = "left"
+            videoDetailScreenMoveContentRailCursor(-1)
+            return true
+        else if key = "right"
+            videoDetailScreenMoveContentRailCursor(1)
+            return true
+        else if key = "up"
+            if m.contentRowIndex = 0
+                m.focusArea = "actions"
+                videoDetailScreenApplySectionVisibility()
+                videoDetailScreenUpdateContentFocus()
+                videoDetailScreenUpdateActionsFocus()
+            else
+                videoDetailScreenMoveContentRow(-1)
+            end if
+            return true
+        else if key = "down"
+            videoDetailScreenMoveContentRow(1)
+            return true
+        else if key = "OK"
+            videoDetailScreenActivateContentRow()
+            return true
+        end if
+        return false
+    end if
+
     if m.focusArea = "episodes"
         if key = "up"
-            moveEpisode(-1)
+            if m.currentEpisodeIndex = 0
+                if m.hasSeasonsRow then m.focusArea = "content" else m.focusArea = "actions"
+                videoDetailScreenSetHeroScrolled(false)
+                videoDetailScreenApplySectionVisibility()
+                videoDetailScreenUpdateEpisodesFocus()
+                if m.focusArea = "content" then videoDetailScreenUpdateContentFocus() else videoDetailScreenUpdateActionsFocus()
+            else
+                videoDetailScreenMoveEpisode(-1)
+            end if
             return true
         else if key = "down"
-            if currentEpisodeIsLast() and firstDetailExtrasFocusArea() <> ""
-                m.focusArea = firstDetailExtrasFocusArea()
-                updateSelectedMediaVisuals()
-                return true
-            end if
-            moveEpisode(1)
-            return true
-        else if key = "left"
-            if m.seasons.Count() > 1 and m.currentSeasonIndex > 0
-                moveSeason(-1)
-            else
-                m.focusArea = "play"
-                updateSelectedMediaVisuals()
-            end if
-            return true
-        else if key = "right"
-            moveSeason(1)
+            videoDetailScreenMoveEpisode(1)
             return true
         else if key = "OK"
-            startSelectedPlayback()
+            videoDetailScreenStartSelectedPlayback()
             return true
         else if key = "options"
-            toggleCurrentEpisodeWatched()
+            videoDetailScreenToggleCurrentEpisodeWatched()
             return true
         end if
-    else if m.focusArea = "play"
-        if key = "up"
-            m.focusArea = "description"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "down"
-            extrasFocus = firstDetailExtrasFocusArea()
-            if extrasFocus <> ""
-                m.focusArea = extrasFocus
-                updateSelectedMediaVisuals()
-                return true
-            end if
-        else if key = "right"
-            m.focusArea = "bookmark"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "OK"
-            startSelectedPlayback()
-            return true
-        end if
-    else if m.focusArea = "bookmark"
-        if key = "up"
-            m.focusArea = "description"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "down"
-            extrasFocus = firstDetailExtrasFocusArea()
-            if extrasFocus <> ""
-                m.focusArea = extrasFocus
-            else
-                m.focusArea = "play"
-            end if
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "left"
-            m.focusArea = "play"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "right"
-            m.focusArea = "episodes"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "OK"
-            openBookmarkOverlay()
-            return true
-        end if
-    else if m.focusArea = "description"
-        if key = "down"
-            m.focusArea = "play"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "right"
-            m.focusArea = "episodes"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "OK"
-            openDescriptionOverlay()
-            return true
-        end if
-    else if m.focusArea = "trailer"
-        if key = "up"
-            m.focusArea = "episodes"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "down"
-            if hasSimilarItems()
-                m.focusArea = "similar"
-            else
-                m.focusArea = "play"
-            end if
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "left"
-            m.focusArea = "play"
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "right"
-            if hasSimilarItems()
-                m.focusArea = "similar"
-            else
-                m.focusArea = "episodes"
-            end if
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "OK"
-            startTrailerPlayback()
-            return true
-        end if
-    else if m.focusArea = "similar"
-        if key = "up"
-            if hasPlayableTrailer()
-                m.focusArea = "trailer"
-            else
-                m.focusArea = "episodes"
-            end if
-            updateSelectedMediaVisuals()
-            return true
-        else if key = "left"
-            moveSimilar(-1)
-            return true
-        else if key = "right"
-            moveSimilar(1)
-            return true
-        else if key = "OK"
-            selectSimilarItem()
-            return true
-        end if
+        return false
     end if
 
     return false

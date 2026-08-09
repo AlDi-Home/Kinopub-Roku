@@ -46,6 +46,7 @@ function createPosterCard(item as Object, layout as Object) as Object
     poster.loadDisplayMode = "scaleToFit"
     card.appendChild(poster)
     posterCardAppendUnwatchedBadge(card, item, layout, theme)
+    posterCardAppendWatchedBadge(card, item, layout, theme)
 
     title = CreateObject("roSGNode", "Label")
     title.text = item.title
@@ -254,6 +255,15 @@ function posterCardStringField(item as Dynamic, key as String, fallback as Strin
     return fallback
 end function
 
+function posterCardBooleanField(item as Dynamic, key as String, fallback as Boolean) as Boolean
+    if item = invalid or type(item) <> "roAssociativeArray" then return fallback
+    if item.DoesExist(key) <> true or item[key] = invalid then return fallback
+    value = item[key]
+    valueType = type(value)
+    if valueType = "Boolean" or valueType = "roBoolean" then return value
+    return fallback
+end function
+
 function posterCardProgressVisible(item as Dynamic) as Boolean
     return posterCardIntegerField(item, "durationSeconds", 0) > 0 and posterCardIntegerField(item, "progressSeconds", 0) > 0
 end function
@@ -418,5 +428,34 @@ sub posterCardAppendUnwatchedBadge(card as Object, item as Object, layout as Obj
     label.height = 22
     label.horizAlign = "center"
     label.color = theme.unwatchedBadgeText
+    card.appendChild(label)
+end sub
+
+' Small checkmark badge for a fully-watched season/item (bottom-left of the
+' poster, distinct from the unwatched-count badge's top-right position since
+' an item is never both). Opt-in via layout.showWatchedBadge; omitted unless
+' item.watched is true.
+sub posterCardAppendWatchedBadge(card as Object, item as Object, layout as Object, theme as Object)
+    if layout.DoesExist("showWatchedBadge") <> true or layout.showWatchedBadge <> true then return
+    if posterCardBooleanField(item, "watched", false) <> true then return
+
+    size = 28
+    bx = layout.posterX + 6
+    by = 8 + layout.posterHeight - size - 6
+
+    bg = CreateObject("roSGNode", "Rectangle")
+    bg.translation = [bx, by]
+    bg.width = size
+    bg.height = size
+    bg.color = theme.watchedBadgeBg
+    card.appendChild(bg)
+
+    label = CreateObject("roSGNode", "Label")
+    label.text = "✓"
+    label.translation = [bx, by + Int((size - 22) / 2)]
+    label.width = size
+    label.height = 22
+    label.horizAlign = "center"
+    label.color = theme.watchedBadgeText
     card.appendChild(label)
 end sub

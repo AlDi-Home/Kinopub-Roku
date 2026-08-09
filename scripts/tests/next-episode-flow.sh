@@ -25,14 +25,14 @@ grep -q 'maybeRequestNextEpisodePrompt("finished")' components/screens/PlayerScr
 grep -q 'field id="nextPlaybackRequested" type="assocarray" alwaysNotify="true"' components/screens/VideoDetailScreen.xml
 grep -q 'field id="nextPlayback" type="assocarray" alwaysNotify="true"' components/screens/VideoDetailScreen.xml
 grep -q 'm.top.observeField("nextPlaybackRequested", "onNextPlaybackRequested")' components/screens/VideoDetailScreen.brs
-grep -q "function nextPlayableMediaAfter" components/screens/VideoDetailScreen.brs
-grep -q "function requestedPlayableMedia" components/screens/VideoDetailScreen.brs
+grep -q "function videoDetailScreenNextPlayableMediaAfter" components/screens/VideoDetailScreen.brs
+grep -q "function videoDetailScreenRequestedPlayableMedia" components/screens/VideoDetailScreen.brs
 grep -q 'if reason = "seasonCarousel"' components/screens/VideoDetailScreen.brs
-grep -q 'nextPlayableMediaAfter(request)' components/screens/VideoDetailScreen.brs
-grep -q "sub prepareNextPlaybackPreflight" components/screens/VideoDetailScreen.brs
+grep -q 'videoDetailScreenNextPlayableMediaAfter(request)' components/screens/VideoDetailScreen.brs
+grep -q "sub videoDetailScreenPrepareNextPlaybackPreflight" components/screens/VideoDetailScreen.brs
 grep -q 'requestReason = reason' components/screens/VideoDetailScreen.brs
-grep -q 'reason = nextPlaybackRequestReasonFromPayload(fallbackPayload)' components/screens/VideoDetailScreen.brs
-grep -q 'm.top.nextPlayback = { ok: true, playback: playbackPayloadForMedia(response.media), reason: reason }' components/screens/VideoDetailScreen.brs
+grep -q 'reason = videoDetailScreenNextPlaybackRequestReasonFromPayload(fallbackPayload)' components/screens/VideoDetailScreen.brs
+grep -q 'm.top.nextPlayback = { ok: true, playback: videoDetailScreenPlaybackPayloadForMedia(response.media), reason: reason }' components/screens/VideoDetailScreen.brs
 grep -q 'm.top.nextPlayback = { ok: true, playback: fallbackPayload, reason: reason }' components/screens/VideoDetailScreen.brs
 grep -q 'm.top.nextPlayback = { ok: false, message: message, reason: reason }' components/screens/VideoDetailScreen.brs
 grep -q 'm.top.nextPlayback = {' components/screens/VideoDetailScreen.brs

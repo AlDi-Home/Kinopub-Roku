@@ -33,8 +33,8 @@ grep -q 'thumbnailUrl' components/screens/PlayerScreen.brs
 grep -q 'Now' components/screens/PlayerScreen.brs
 grep -q '✓' components/screens/PlayerScreen.brs
 
-grep -q 'seasonEpisodes: seasonEpisodesForMedia(media)' components/screens/VideoDetailScreen.brs
-grep -q 'function seasonEpisodesForMedia' components/screens/VideoDetailScreen.brs
+grep -q 'seasonEpisodes: videoDetailScreenSeasonEpisodesForMedia(media)' components/screens/VideoDetailScreen.brs
+grep -q 'function videoDetailScreenSeasonEpisodesForMedia' components/screens/VideoDetailScreen.brs
 grep -q 'thumbnailUrl: episode.thumbnailUrl' components/screens/VideoDetailScreen.brs
 grep -q 'watched: episode.watched' components/screens/VideoDetailScreen.brs
 grep -q 'requestMediaId > 0 and media.mediaId <> invalid and media.mediaId = requestMediaId' components/screens/VideoDetailScreen.brs
