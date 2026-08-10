@@ -12,6 +12,7 @@ function KinoSearchService(client as Object) as Object
         metadata: kinoSearchMetadata
         genreTitles: kinoSearchGenreTitles
         countryTitles: kinoSearchCountryTitles
+        itemIsAnime: kinoSearchItemIsAnime
         stringField: kinoSearchStringField
         integerField: kinoSearchIntegerField
         arrayField: kinoSearchArrayField
@@ -19,7 +20,7 @@ function KinoSearchService(client as Object) as Object
     }
 end function
 
-function kinoSearchItems(accessToken as String, query as String, page as Integer, perpage as Integer, typeMap = invalid as Dynamic, sortByYear = true as Boolean, contentType = "" as String, searchField = "title" as String) as Object
+function kinoSearchItems(accessToken as String, query as String, page as Integer, perpage as Integer, typeMap = invalid as Dynamic, sortByYear = true as Boolean, contentType = "" as String, searchField = "title" as String, hideAnime = false as Boolean) as Object
     trimmedQuery = query.Trim()
     if trimmedQuery = ""
         return { ok: false, error: "invalid_query", message: "Enter a search term.", status: 0 }
@@ -41,10 +42,10 @@ function kinoSearchItems(accessToken as String, query as String, page as Integer
 
     response = m.client.get("/v1/items", queryParams, m.client.defaultTimeoutMs)
     if response.ok <> true then return m.failure(response)
-    return m.normalizeResponse(response.body, page, perpage, typeMap)
+    return m.normalizeResponse(response.body, page, perpage, typeMap, hideAnime)
 end function
 
-function kinoSearchNormalizeResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoSearchNormalizeResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     items = []
     pagination = {
         total: 0
@@ -62,8 +63,10 @@ function kinoSearchNormalizeResponse(body as Dynamic, requestedPage as Integer, 
     end if
 
     for each item in body.items
-        normalized = m.normalizeItem(item, typeMap)
-        if normalized.itemId > 0 then items.Push(normalized)
+        if hideAnime <> true or m.itemIsAnime(item) <> true
+            normalized = m.normalizeItem(item, typeMap)
+            if normalized.itemId > 0 then items.Push(normalized)
+        end if
     end for
 
     if body.DoesExist("pagination") and body.pagination <> invalid and type(body.pagination) = "roAssociativeArray"
@@ -180,6 +183,14 @@ function kinoSearchGenreTitles(item as Dynamic) as String
         if titles.Count() = 2 then exit for
     end for
     return titles.Join(", ")
+end function
+
+function kinoSearchItemIsAnime(item as Dynamic) as Boolean
+    genres = m.arrayField(item, "genres")
+    for each genre in genres
+        if LCase(m.stringField(genre, "title", "")) = "аниме" then return true
+    end for
+    return false
 end function
 
 function kinoSearchCountryTitles(item as Dynamic) as String

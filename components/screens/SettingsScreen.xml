@@ -43,5 +43,6 @@
     </children>
     <script type="text/brightscript" uri="pkg:/components/theme/UiTheme.brs" />
     <script type="text/brightscript" uri="pkg:/source/config/BuildInfo.brs" />
+    <script type="text/brightscript" uri="pkg:/source/services/AppSettingsStore.brs" />
     <script type="text/brightscript" uri="pkg:/components/screens/SettingsScreen.brs" />
 </component>

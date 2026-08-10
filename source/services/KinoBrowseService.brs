@@ -28,6 +28,7 @@ function KinoBrowseService(client as Object) as Object
         metadata: kinoBrowseMetadata
         genreTitles: kinoBrowseGenreTitles
         countryTitles: kinoBrowseCountryTitles
+        itemIsAnime: kinoBrowseItemIsAnime
         stringField: kinoBrowseStringField
         integerField: kinoBrowseIntegerField
         arrayField: kinoBrowseArrayField
@@ -137,7 +138,7 @@ function kinoBrowseNormalizeOption(optionItem as Dynamic) as Object
     }
 end function
 
-function kinoBrowseListItems(accessToken as String, request as Object, typeMap = invalid as Dynamic) as Object
+function kinoBrowseListItems(accessToken as String, request as Object, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     page = m.integerField(request, "page", 1)
     perpage = m.integerField(request, "perpage", 20)
     if page < 1 then page = 1
@@ -147,12 +148,20 @@ function kinoBrowseListItems(accessToken as String, request as Object, typeMap =
     queryParams = m.queryParams(accessToken, request, page, perpage)
     response = m.client.get("/v1/items", queryParams, m.client.defaultTimeoutMs)
     if response.ok <> true then return m.failure(response)
-    return m.normalizeItemsResponse(response.body, page, perpage, typeMap)
+
+    ' Library's own Жанр filter already lets someone explicitly ask for a
+    ' specific genre, including Аниме — don't second-guess that choice by
+    ' silently emptying the results out from under them. The blanket filter
+    ' only applies when browsing "Любой" (no genre picked).
+    effectiveHideAnime = hideAnime
+    if m.stringField(request, "genreId", "") <> "" then effectiveHideAnime = false
+
+    return m.normalizeItemsResponse(response.body, page, perpage, typeMap, effectiveHideAnime)
 end function
 
 ' "Shortcut" video lists (fresh/hot/popular) are dedicated endpoints, not a
 ' filter on /v1/items — see https://kinoapi.com/api_video.html#shortcut.
-function kinoBrowseListShortcut(accessToken as String, shortcut as String, request as Object, typeMap = invalid as Dynamic) as Object
+function kinoBrowseListShortcut(accessToken as String, shortcut as String, request as Object, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     page = m.integerField(request, "page", 1)
     perpage = m.integerField(request, "perpage", 20)
     if page < 1 then page = 1
@@ -171,7 +180,7 @@ function kinoBrowseListShortcut(accessToken as String, shortcut as String, reque
 
     response = m.client.get(endpoint, queryParams, m.client.defaultTimeoutMs)
     if response.ok <> true then return m.failure(response)
-    return m.normalizeItemsResponse(response.body, page, perpage, typeMap)
+    return m.normalizeItemsResponse(response.body, page, perpage, typeMap, hideAnime)
 end function
 
 function kinoBrowseShortcutEndpoint(shortcut as String) as String
@@ -224,7 +233,7 @@ function kinoBrowseFinishedValue(finishedId as String) as String
     return ""
 end function
 
-function kinoBrowseNormalizeItemsResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoBrowseNormalizeItemsResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     items = []
     pagination = {
         total: 0
@@ -242,8 +251,10 @@ function kinoBrowseNormalizeItemsResponse(body as Dynamic, requestedPage as Inte
     end if
 
     for each item in body.items
-        normalized = m.normalizeItem(item, typeMap)
-        if normalized.itemId > 0 then items.Push(normalized)
+        if hideAnime <> true or m.itemIsAnime(item) <> true
+            normalized = m.normalizeItem(item, typeMap)
+            if normalized.itemId > 0 then items.Push(normalized)
+        end if
     end for
 
     if body.DoesExist("pagination") and body.pagination <> invalid and type(body.pagination) = "roAssociativeArray"
@@ -352,6 +363,18 @@ function kinoBrowseGenreTitles(item as Dynamic) as String
         if titles.Count() = 2 then exit for
     end for
     return titles.Join(", ")
+end function
+
+' Settings screen's "Скрывать Аниме" toggle. KinoPub has no dedicated
+' content type for anime (types are movie/serial/3D/concert/documovie/
+' docuserial/tvshow) — anime titles are just movies/serials tagged with the
+' "Аниме" genre, so filtering has to check the raw item's genres list.
+function kinoBrowseItemIsAnime(item as Dynamic) as Boolean
+    genres = m.arrayField(item, "genres")
+    for each genre in genres
+        if LCase(m.stringField(genre, "title", "")) = "аниме" then return true
+    end for
+    return false
 end function
 
 function kinoBrowseCountryTitles(item as Dynamic) as String

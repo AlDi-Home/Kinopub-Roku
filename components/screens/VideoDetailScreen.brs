@@ -101,6 +101,7 @@ sub init()
     m.selection = invalid
     m.item = invalid
     m.trailer = invalid
+    m.subscribed = false
     m.detailRequestGeneration = 0
     m.isSeries = false
     m.hasSeasonsRow = false
@@ -210,6 +211,7 @@ sub onDetailResponse(event as Object)
 
     m.item = response.item
     m.trailer = invalid
+    m.subscribed = m.item.subscribed = true
     videoDetailScreenCancelPlaybackPreflight()
     videoDetailScreenBuildPlayableModel()
     m.isSeries = m.item.seasons <> invalid and m.item.seasons.Count() > 0
@@ -591,6 +593,7 @@ sub videoDetailScreenRenderActions()
     rows = [{ id: "play", label: videoDetailScreenPlayLabel() }]
     if videoDetailScreenHasPlayableTrailer() then rows.Push({ id: "trailer", label: "▶  Трейлер" })
     rows.Push({ id: "bookmark", label: videoDetailScreenBookmarkLabel() })
+    if m.isSeries then rows.Push({ id: "watchlist", label: videoDetailScreenWatchlistLabel() })
 
     rowHeight = 46
     rowGap = 10
@@ -639,6 +642,11 @@ function videoDetailScreenBookmarkLabel() as String
     if m.itemBookmarkFolders <> invalid then count = m.itemBookmarkFolders.Count()
     if count > 0 then return "♥  В закладках (" + StrI(count).Trim() + ")"
     return "♡  В закладки"
+end function
+
+function videoDetailScreenWatchlistLabel() as String
+    if m.subscribed = true then return "★  Буду смотреть"
+    return "☆  Буду смотреть"
 end function
 
 sub videoDetailScreenUpdateActionsFocus()
@@ -2160,6 +2168,43 @@ sub onToggleItemBookmarkResponse(event as Object)
     videoDetailScreenLoadBookmarkFoldersForOverlay()
 end sub
 
+' "Буду смотреть" (watchlist) toggle — serial-only action row, separate from
+' bookmarks. See https://kinoapi.com/api_watching.html#id16: adds/removes the
+' serial from the same subscribed set that feeds the Continue Watching "New
+' Episodes" rail (KinoWatchingService.brs's listSerials/toggleWatchlist).
+sub videoDetailScreenToggleWatchlist()
+    if m.item = invalid then return
+
+    task = CreateObject("roSGNode", "ContentTask")
+    task.command = "toggleWatchlist"
+    task.request = { itemId: m.item.itemId }
+    task.observeField("response", "onToggleWatchlistResponse")
+    task.control = "RUN"
+    m.toggleWatchlistTask = task
+end sub
+
+sub onToggleWatchlistResponse(event as Object)
+    response = event.getData()
+    if response = invalid or response.ok <> true
+        if videoDetailScreenResponseRequiresSignIn(response)
+            videoDetailScreenRequestSignInAgain(response)
+            return
+        end if
+        message = "Не удалось обновить список «Буду смотреть»."
+        if response <> invalid and response.message <> invalid and response.message <> "" then message = response.message
+        videoDetailScreenSetStatusMessage(message)
+        return
+    end if
+
+    if response.watching <> invalid then m.subscribed = response.watching = true
+    videoDetailScreenRenderActions()
+    if m.subscribed
+        videoDetailScreenSetStatusMessage("Добавлено в «Буду смотреть»")
+    else
+        videoDetailScreenSetStatusMessage("Удалено из «Буду смотреть»")
+    end if
+end sub
+
 ' ---------------------------------------------------------------------------
 ' onKeyEvent — focusArea state machine: "actions" / "description" /
 ' "content" / "episodes"
@@ -2248,6 +2293,8 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
                 videoDetailScreenStartTrailerPlayback()
             else if actionId = "bookmark"
                 videoDetailScreenOpenBookmarkOverlay()
+            else if actionId = "watchlist"
+                videoDetailScreenToggleWatchlist()
             end if
             return true
         end if

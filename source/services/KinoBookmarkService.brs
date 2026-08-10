@@ -18,6 +18,7 @@ function KinoBookmarkService(client as Object) as Object
         metadata: kinoBookmarkMetadata
         genreTitles: kinoBookmarkGenreTitles
         countryTitles: kinoBookmarkCountryTitles
+        itemIsAnime: kinoBookmarkItemIsAnime
         stringField: kinoBookmarkStringField
         integerField: kinoBookmarkIntegerField
         arrayField: kinoBookmarkArrayField
@@ -31,7 +32,7 @@ function kinoBookmarkListFolders(accessToken as String) as Object
     return m.normalizeFoldersResponse(response.body)
 end function
 
-function kinoBookmarkListFolderItems(accessToken as String, folderId as Integer, page as Integer, perpage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoBookmarkListFolderItems(accessToken as String, folderId as Integer, page as Integer, perpage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     if folderId <= 0 then return { ok: false, error: "invalid_folder", message: "Unable to load this bookmark folder.", status: 0 }
     if page < 1 then page = 1
     if perpage < 1 then perpage = 20
@@ -39,7 +40,7 @@ function kinoBookmarkListFolderItems(accessToken as String, folderId as Integer,
 
     response = m.client.get("/v1/bookmarks/" + StrI(folderId).Trim(), { access_token: accessToken, page: page, perpage: perpage }, m.client.defaultTimeoutMs)
     if response.ok <> true then return m.failure(response)
-    return m.normalizeFolderItemsResponse(response.body, page, perpage, typeMap)
+    return m.normalizeFolderItemsResponse(response.body, page, perpage, typeMap, hideAnime)
 end function
 
 function kinoBookmarkItemFolders(accessToken as String, itemId as Integer) as Object
@@ -106,7 +107,7 @@ function kinoBookmarkNormalizeFolder(folder as Dynamic) as Object
     }
 end function
 
-function kinoBookmarkNormalizeFolderItemsResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoBookmarkNormalizeFolderItemsResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     items = []
     folder = invalid
     pagination = {
@@ -126,8 +127,10 @@ function kinoBookmarkNormalizeFolderItemsResponse(body as Dynamic, requestedPage
     end if
 
     for each item in body.items
-        normalized = m.normalizeItem(item, typeMap)
-        if normalized.itemId > 0 then items.Push(normalized)
+        if hideAnime <> true or m.itemIsAnime(item) <> true
+            normalized = m.normalizeItem(item, typeMap)
+            if normalized.itemId > 0 then items.Push(normalized)
+        end if
     end for
 
     if body.DoesExist("pagination") and body.pagination <> invalid and type(body.pagination) = "roAssociativeArray"
@@ -243,6 +246,14 @@ function kinoBookmarkGenreTitles(item as Dynamic) as String
         if titles.Count() = 2 then exit for
     end for
     return titles.Join(", ")
+end function
+
+function kinoBookmarkItemIsAnime(item as Dynamic) as Boolean
+    genres = m.arrayField(item, "genres")
+    for each genre in genres
+        if LCase(m.stringField(genre, "title", "")) = "аниме" then return true
+    end for
+    return false
 end function
 
 function kinoBookmarkCountryTitles(item as Dynamic) as String

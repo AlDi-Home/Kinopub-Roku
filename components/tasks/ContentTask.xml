@@ -6,6 +6,7 @@
     <field id="response" type="assocarray" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/components/tasks/ContentTask.brs" />
+  <script type="text/brightscript" uri="pkg:/source/services/AppSettingsStore.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/TokenStore.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/KinoApiClient.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/KinoAuthService.brs" />

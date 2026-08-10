@@ -24,6 +24,7 @@ function KinoItemService(client as Object) as Object
         watchStatus: kinoItemWatchStatus
         watchedState: kinoItemWatchedState
         progressSeconds: kinoItemProgressSeconds
+        subscribed: kinoItemSubscribed
         posterUrl: kinoItemPosterUrl
         backdropUrl: kinoItemBackdropUrl
         description: kinoItemDescription
@@ -120,8 +121,18 @@ function kinoItemNormalizeResponse(body as Dynamic, requestedItemId as Integer) 
             videos: videos
             seasons: seasons
             playableCount: playableCount
+            subscribed: m.subscribed(item)
         }
     }
+end function
+
+' KinoPub's /v1/items/<id> documents this field under both "subscribed" and
+' the alias "in_watchlist" — read whichever is present.
+function kinoItemSubscribed(item as Dynamic) as Boolean
+    if item <> invalid and type(item) = "roAssociativeArray" and item.DoesExist("subscribed")
+        return m.booleanField(item, "subscribed", false)
+    end if
+    return m.booleanField(item, "in_watchlist", false)
 end function
 
 function kinoItemNormalizeSimilarResponse(body as Dynamic) as Object

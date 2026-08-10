@@ -44,6 +44,9 @@ sub init()
     m.deviceReady = false
     m.deviceFailed = false
 
+    m.appSettingsStore = AppSettingsStore()
+    m.hideAnime = m.appSettingsStore.loadHideAnime()
+
     m.activeSettingId = ""
     m.settingsRows = []
     m.settingsRowNodes = []
@@ -268,10 +271,14 @@ function settingsScreenBuildRows() as Object
     fourKText = "Нет"
     if m.support4k = true then fourKText = "Да"
 
+    hideAnimeText = "Нет"
+    if m.hideAnime = true then hideAnimeText = "Да"
+
     return [
         { id: "support4k", label: "Поддержка 4K: " + fourKText }
         { id: "serverLocation", label: "Сервер: " + settingsScreenTitleForListValue(m.serverLocationOptions, m.serverLocationSelectedId) }
         { id: "streamingType", label: "Тип трансляции: " + settingsScreenTitleForListValue(m.streamingTypeOptions, m.streamingTypeSelectedId) }
+        { id: "hideAnime", label: "Скрывать Аниме: " + hideAnimeText }
         { id: "signOut", label: "Выйти из аккаунта" }
     ]
 end function
@@ -343,6 +350,8 @@ sub settingsScreenActivateRow()
 
     if row.id = "support4k"
         settingsScreenToggleSupport4k()
+    else if row.id = "hideAnime"
+        settingsScreenToggleHideAnime()
     else if row.id = "serverLocation" or row.id = "streamingType"
         settingsScreenOpenFilterPicker(row.id)
     else if row.id = "signOut"
@@ -358,6 +367,16 @@ sub settingsScreenToggleSupport4k()
     value = "0"
     if m.support4k then value = "1"
     settingsScreenSendUpdate("support4k", value)
+end sub
+
+' Purely local (registry-backed) preference — no device API round trip, so
+' unlike settingsScreenToggleSupport4k() this can't fail and never needs
+' settingsScreenSendUpdate/re-sync-on-failure.
+sub settingsScreenToggleHideAnime()
+    m.hideAnime = m.hideAnime <> true
+    m.appSettingsStore.saveHideAnime(m.hideAnime)
+    m.settingsRows = settingsScreenBuildRows()
+    settingsScreenRenderRows()
 end sub
 
 sub settingsScreenOpenFilterPicker(settingId as String)

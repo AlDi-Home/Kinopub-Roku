@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.8.0 - 2026-08-09
+
+### Added
+- Settings: new "Скрывать Аниме" toggle (on by default). KinoPub has no dedicated content type for anime — titles are just movies/serials tagged with the "Аниме" genre — so this filters any item whose genre list includes it out of Movies, Series, Library (all-genres view), Search, Continue Watching (both History and New Episodes), and bookmark folders. It's a purely local (registry-backed) preference, applied server-response-side in each content service before items are normalized for display, not a KinoPub account setting. Explicitly picking "Жанр: Аниме" in Library's own filter bar is left alone — the blanket filter only applies when browsing "Любой" (no specific genre chosen), so it never fights an explicit genre pick with an empty result list.
+- Video detail (serials only): a new "Буду смотреть" action alongside "В закладки", toggling the item on/off KinoPub's watchlist (`/v1/watching/togglewatchlist`, see https://kinoapi.com/api_watching.html#id16) — the same subscribed set that feeds Continue Watching's "New Episodes" rail. Initial state comes from the item detail response's `subscribed`/`in_watchlist` field, no extra request needed.
+
+### Docs
+- Rewrote `Readme.md` from scratch — it still described the app as a "small SceneGraph app" with a home/search-only feature set from well before the navigation/screens/player rewrite. Now covers the actual screen set, services, task-thread architecture, and current feature list, plus a proper attribution chain (this project → slimus/Kinopub → the archived karpeychik/Kinopub).
+
+## 0.7.1 - 2026-08-09
+
+### Fixed
+- Stats overlay showed a hardcoded "Audio: DEFAULT" and blank "Language: —" for a brand-new episode/serial with no prior manually-picked audio track. `selectedAudioLabel()`/`selectedAudioLanguage()` only matched against `m.preferences["audioTrackId"]`, which is only ever written by an explicit manual pick (`applyAudioSelection`) — never by the auto-applied saved-preference path — and fell back to a generic placeholder for any multi-track list instead of the actual track Roku defaults to (index 0) when nothing has been explicitly chosen yet. Both now fall back to the first available track for any non-empty list, not just single-track ones.
+
 ## 0.7.0 - 2026-08-09
 
 Player screen redesign, matching reference screenshots for a Netflix/Apple-TV-style dark UI. Most of the underlying mechanics (Play/Pause, Rewind/FastForward, the show-on-Up/OK auto-hiding OSD, the audio/subtitle/quality track-picker popover) were already implemented — this pass is primarily a visual restyle, plus a few real behavior changes.

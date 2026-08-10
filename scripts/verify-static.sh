@@ -5,6 +5,7 @@ required_files=(
   VERSION
   manifest
   source/main.brs
+  source/services/AppSettingsStore.brs
   source/services/KinoApiClient.brs
   source/services/KinoAuthService.brs
   source/services/KinoBookmarkService.brs

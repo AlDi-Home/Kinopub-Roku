@@ -17,18 +17,20 @@ sub runContentTask()
     tvService = KinoTvService(client)
     userService = KinoUserService(client)
     watchingService = KinoWatchingService(client)
+    appSettingsService = AppSettingsStore()
+    hideAnime = appSettingsService.loadHideAnime()
     command = m.top.command
     request = m.top.request
     print "ContentTask: running command "; command
 
     if command = "loadHistoryPage"
-        m.top.response = contentTaskLoadHistoryPage(tokenStoreService, authService, historyService, typeService, request)
+        m.top.response = contentTaskLoadHistoryPage(tokenStoreService, authService, historyService, typeService, request, hideAnime)
     else if command = "loadContinueSummary"
-        m.top.response = contentTaskLoadContinueSummary(tokenStoreService, authService, historyService, watchingService, typeService, request)
+        m.top.response = contentTaskLoadContinueSummary(tokenStoreService, authService, historyService, watchingService, typeService, request, hideAnime)
     else if command = "loadContinueHistoryPage"
-        m.top.response = contentTaskLoadContinueHistoryPage(tokenStoreService, authService, historyService, typeService, request)
+        m.top.response = contentTaskLoadContinueHistoryPage(tokenStoreService, authService, historyService, typeService, request, hideAnime)
     else if command = "loadContinueNewEpisodesPage"
-        m.top.response = contentTaskLoadContinueNewEpisodesPage(tokenStoreService, authService, watchingService, typeService, request)
+        m.top.response = contentTaskLoadContinueNewEpisodesPage(tokenStoreService, authService, watchingService, typeService, request, hideAnime)
     else if command = "loadHome"
         m.top.response = contentTaskLoadHome(tokenStoreService, authService, homeService, typeService, request)
     else if command = "loadItemDetail"
@@ -40,7 +42,7 @@ sub runContentTask()
     else if command = "loadSearchOptions"
         m.top.response = contentTaskLoadSearchOptions(tokenStoreService, authService, typeService)
     else if command = "searchItems"
-        m.top.response = contentTaskSearchItems(tokenStoreService, authService, searchService, typeService, request)
+        m.top.response = contentTaskSearchItems(tokenStoreService, authService, searchService, typeService, request, hideAnime)
     else if command = "loadUserInfo"
         m.top.response = contentTaskLoadUserInfo(tokenStoreService, authService, userService)
     else if command = "loadDeviceSettings"
@@ -50,13 +52,13 @@ sub runContentTask()
     else if command = "loadBookmarkFolders"
         m.top.response = contentTaskLoadBookmarkFolders(tokenStoreService, authService, bookmarkService)
     else if command = "loadBookmarkFolderItems"
-        m.top.response = contentTaskLoadBookmarkFolderItems(tokenStoreService, authService, bookmarkService, typeService, request)
+        m.top.response = contentTaskLoadBookmarkFolderItems(tokenStoreService, authService, bookmarkService, typeService, request, hideAnime)
     else if command = "loadBrowseOptions"
         m.top.response = contentTaskLoadBrowseOptions(tokenStoreService, authService, browseService, typeService)
     else if command = "loadBrowseItems"
-        m.top.response = contentTaskLoadBrowseItems(tokenStoreService, authService, browseService, typeService, request)
+        m.top.response = contentTaskLoadBrowseItems(tokenStoreService, authService, browseService, typeService, request, hideAnime)
     else if command = "loadShortcutItems"
-        m.top.response = contentTaskLoadShortcutItems(tokenStoreService, authService, browseService, typeService, request)
+        m.top.response = contentTaskLoadShortcutItems(tokenStoreService, authService, browseService, typeService, request, hideAnime)
     else if command = "probeLiveTv" or command = "loadLiveTv"
         m.top.response = contentTaskLoadLiveTv(tokenStoreService, authService, tvService, command)
     else if command = "loadItemBookmarkFolders"
@@ -69,6 +71,8 @@ sub runContentTask()
         m.top.response = contentTaskMarkPlaybackWatched(tokenStoreService, authService, watchingService, request)
     else if command = "toggleEpisodeWatched"
         m.top.response = contentTaskToggleEpisodeWatched(tokenStoreService, authService, watchingService, request)
+    else if command = "toggleWatchlist"
+        m.top.response = contentTaskToggleWatchlist(tokenStoreService, authService, watchingService, request)
     else if command = "ensureFreshTokens"
         m.top.response = contentTaskEnsureFreshTokens(tokenStoreService, authService)
     else
@@ -123,7 +127,7 @@ function contentTaskLoadHome(tokenStoreService as Object, authService as Object,
     return result
 end function
 
-function contentTaskLoadHistoryPage(tokenStoreService as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadHistoryPage(tokenStoreService as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
     if page < 1 then page = 1
@@ -149,7 +153,7 @@ function contentTaskLoadHistoryPage(tokenStoreService as Object, authService as 
     if accessToken = "" then return { command: "loadHistoryPage", ok: false, page: page, perpage: perpage, error: "auth_required", message: "Sign in again to load History." }
 
     typeMap = contentTaskTypeMap(typeService, accessToken)
-    result = historyService.list(accessToken, page, perpage, typeMap)
+    result = historyService.list(accessToken, page, perpage, typeMap, hideAnime)
     result.command = "loadHistoryPage"
     result.page = page
     result.perpage = perpage
@@ -165,14 +169,14 @@ function contentTaskContinuePageRequest(request as Dynamic) as Object
     return { page: page, perpage: perpage }
 end function
 
-function contentTaskLoadContinueHistoryPage(tokenStoreService as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic) as Object
-    result = contentTaskLoadHistoryPage(tokenStoreService, authService, historyService, typeService, request)
+function contentTaskLoadContinueHistoryPage(tokenStoreService as Object, authService as Object, historyService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
+    result = contentTaskLoadHistoryPage(tokenStoreService, authService, historyService, typeService, request, hideAnime)
     result.command = "loadContinueHistoryPage"
     result.kind = "history"
     return result
 end function
 
-function contentTaskLoadContinueNewEpisodesPage(tokenStoreService as Object, authService as Object, watchingService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadContinueNewEpisodesPage(tokenStoreService as Object, authService as Object, watchingService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
     pageRequest = contentTaskContinuePageRequest(request)
     page = pageRequest.page
     perpage = pageRequest.perpage
@@ -196,7 +200,7 @@ function contentTaskLoadContinueNewEpisodesPage(tokenStoreService as Object, aut
     if accessToken = "" then return { command: "loadContinueNewEpisodesPage", kind: "newEpisodes", ok: false, page: page, perpage: perpage, error: "auth_required", message: "Sign in again to load new episodes." }
 
     typeMap = contentTaskTypeMap(typeService, accessToken)
-    result = watchingService.listSerials(accessToken, page, perpage, typeMap)
+    result = watchingService.listSerials(accessToken, page, perpage, typeMap, hideAnime)
     result.command = "loadContinueNewEpisodesPage"
     result.kind = "newEpisodes"
     result.page = page
@@ -204,18 +208,18 @@ function contentTaskLoadContinueNewEpisodesPage(tokenStoreService as Object, aut
     return result
 end function
 
-function contentTaskLoadContinueSummary(tokenStoreService as Object, authService as Object, historyService as Object, watchingService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadContinueSummary(tokenStoreService as Object, authService as Object, historyService as Object, watchingService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
     perpage = contentTaskIntegerField(request, "perpage", 10)
     if perpage < 1 then perpage = 10
     if perpage > 20 then perpage = 20
     pageRequest = { page: 1, perpage: perpage }
 
-    history = contentTaskLoadContinueHistoryPage(tokenStoreService, authService, historyService, typeService, pageRequest)
+    history = contentTaskLoadContinueHistoryPage(tokenStoreService, authService, historyService, typeService, pageRequest, hideAnime)
     if history.error = "auth_required"
         return { command: "loadContinueSummary", ok: false, error: "auth_required", message: history.message, history: history }
     end if
 
-    newEpisodes = contentTaskLoadContinueNewEpisodesPage(tokenStoreService, authService, watchingService, typeService, pageRequest)
+    newEpisodes = contentTaskLoadContinueNewEpisodesPage(tokenStoreService, authService, watchingService, typeService, pageRequest, hideAnime)
     if newEpisodes.error = "auth_required"
         return { command: "loadContinueSummary", ok: false, error: "auth_required", message: newEpisodes.message, history: history, newEpisodes: newEpisodes }
     end if
@@ -318,7 +322,7 @@ function contentTaskRefreshMediaLinks(tokenStoreService as Object, authService a
     return result
 end function
 
-function contentTaskSearchItems(tokenStoreService as Object, authService as Object, searchService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskSearchItems(tokenStoreService as Object, authService as Object, searchService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
     query = contentTaskStringField(request, "q", "").Trim()
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
@@ -347,7 +351,7 @@ function contentTaskSearchItems(tokenStoreService as Object, authService as Obje
     end if
 
     typeMap = contentTaskTypeMap(typeService, tokenResult.accessToken)
-    result = searchService.search(tokenResult.accessToken, query, page, perpage, typeMap, sortByYear, contentType, searchField)
+    result = searchService.search(tokenResult.accessToken, query, page, perpage, typeMap, sortByYear, contentType, searchField, hideAnime)
     result.command = "searchItems"
     result.q = query
     result.page = page
@@ -425,7 +429,7 @@ function contentTaskLoadBookmarkFolders(tokenStoreService as Object, authService
     return result
 end function
 
-function contentTaskLoadBookmarkFolderItems(tokenStoreService as Object, authService as Object, bookmarkService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadBookmarkFolderItems(tokenStoreService as Object, authService as Object, bookmarkService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
     folderId = contentTaskIntegerField(request, "folderId", 0)
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
@@ -438,7 +442,7 @@ function contentTaskLoadBookmarkFolderItems(tokenStoreService as Object, authSer
     end if
 
     typeMap = contentTaskTypeMap(typeService, tokenResult.accessToken)
-    result = bookmarkService.listFolderItems(tokenResult.accessToken, folderId, page, perpage, typeMap)
+    result = bookmarkService.listFolderItems(tokenResult.accessToken, folderId, page, perpage, typeMap, hideAnime)
     result.command = "loadBookmarkFolderItems"
     result.folderId = folderId
     result.page = page
@@ -494,7 +498,7 @@ function contentTaskLoadBrowseOptions(tokenStoreService as Object, authService a
     return result
 end function
 
-function contentTaskLoadBrowseItems(tokenStoreService as Object, authService as Object, browseService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadBrowseItems(tokenStoreService as Object, authService as Object, browseService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
     if page < 1 then page = 1
@@ -511,7 +515,7 @@ function contentTaskLoadBrowseItems(tokenStoreService as Object, authService as 
 
     typeMap = contentTaskTypeMap(typeService, tokenResult.accessToken)
     browseRequestParams = contentTaskBrowseRequest(request, page, perpage)
-    result = browseService.listItems(tokenResult.accessToken, browseRequestParams, typeMap)
+    result = browseService.listItems(tokenResult.accessToken, browseRequestParams, typeMap, hideAnime)
     result.command = "loadBrowseItems"
     result.page = page
     result.perpage = perpage
@@ -523,7 +527,7 @@ function contentTaskLoadBrowseItems(tokenStoreService as Object, authService as 
     return result
 end function
 
-function contentTaskLoadShortcutItems(tokenStoreService as Object, authService as Object, browseService as Object, typeService as Object, request as Dynamic) as Object
+function contentTaskLoadShortcutItems(tokenStoreService as Object, authService as Object, browseService as Object, typeService as Object, request as Dynamic, hideAnime = false as Boolean) as Object
     page = contentTaskIntegerField(request, "page", 1)
     perpage = contentTaskIntegerField(request, "perpage", 20)
     if page < 1 then page = 1
@@ -542,7 +546,7 @@ function contentTaskLoadShortcutItems(tokenStoreService as Object, authService a
     shortcut = contentTaskStringField(request, "shortcut", "")
     contentType = contentTaskStringField(request, "contentType", "")
     shortcutRequestParams = { page: page, perpage: perpage, contentType: contentType }
-    result = browseService.listShortcut(tokenResult.accessToken, shortcut, shortcutRequestParams, typeMap)
+    result = browseService.listShortcut(tokenResult.accessToken, shortcut, shortcutRequestParams, typeMap, hideAnime)
     result.command = "loadShortcutItems"
     result.page = page
     result.perpage = perpage
@@ -711,6 +715,25 @@ function contentTaskToggleEpisodeWatched(tokenStoreService as Object, authServic
         result.progressMessage = clearResult.message
     end if
     result.watched = targetWatchedState.value
+    return result
+end function
+
+function contentTaskToggleWatchlist(tokenStoreService as Object, authService as Object, watchingService as Object, request as Dynamic) as Object
+    itemId = contentTaskIntegerField(request, "itemId", 0)
+    if itemId <= 0
+        return { command: "toggleWatchlist", ok: false, itemId: itemId, error: "invalid_item", message: "Unable to update your watchlist.", status: 0 }
+    end if
+
+    tokenResult = contentTaskAccessToken(tokenStoreService, authService, "Sign in again to update your watchlist.")
+    if tokenResult.ok <> true
+        tokenResult.command = "toggleWatchlist"
+        tokenResult.itemId = itemId
+        return tokenResult
+    end if
+
+    result = watchingService.toggleWatchlist(tokenResult.accessToken, itemId)
+    result.command = "toggleWatchlist"
+    result.itemId = itemId
     return result
 end function
 

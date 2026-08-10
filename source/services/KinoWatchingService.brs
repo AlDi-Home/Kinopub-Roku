@@ -8,15 +8,19 @@ function KinoWatchingService(client as Object) as Object
         serialsListFromBody: kinoWatchingSerialsListFromBody
         stringField: kinoWatchingStringField
         integerField: kinoWatchingIntegerField
+        arrayField: kinoWatchingArrayField
+        itemIsAnime: kinoWatchingItemIsAnime
+        entryItem: kinoWatchingEntryItem
         posterUrl: kinoWatchingPosterUrl
         markTime: kinoWatchingMarkTime
         toggleWatched: kinoWatchingToggleWatched
+        toggleWatchlist: kinoWatchingToggleWatchlist
         success: kinoWatchingSuccess
         failure: kinoWatchingFailure
     }
 end function
 
-function kinoWatchingListSerials(accessToken as String, page as Integer, perpage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoWatchingListSerials(accessToken as String, page as Integer, perpage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     if page < 1 then page = 1
     if perpage < 1 then perpage = 20
     if perpage > 50 then perpage = 50
@@ -30,10 +34,10 @@ function kinoWatchingListSerials(accessToken as String, page as Integer, perpage
 
     response = m.client.get("/v1/watching/serials", queryParams, m.client.defaultTimeoutMs)
     if response.ok <> true then return m.failure(response)
-    return m.normalizeSerialsResponse(response.body, page, perpage, typeMap)
+    return m.normalizeSerialsResponse(response.body, page, perpage, typeMap, hideAnime)
 end function
 
-function kinoWatchingNormalizeSerialsResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoWatchingNormalizeSerialsResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     items = []
     pagination = m.normalizeWatchingPagination(body, requestedPage, requestedPerPage)
     serials = m.serialsListFromBody(body)
@@ -43,25 +47,37 @@ function kinoWatchingNormalizeSerialsResponse(body as Dynamic, requestedPage as 
     end if
 
     for each entry in serials
-        normalized = m.normalizeSerialEntry(entry, typeMap)
-        if normalized.itemId > 0 and normalized.type = "serial" then items.Push(normalized)
+        if hideAnime <> true or m.itemIsAnime(m.entryItem(entry)) <> true
+            normalized = m.normalizeSerialEntry(entry, typeMap)
+            if normalized.itemId > 0 and normalized.type = "serial" then items.Push(normalized)
+        end if
     end for
 
     return { ok: true, items: items, pagination: pagination }
 end function
 
-function kinoWatchingNormalizeSerialEntry(entry as Dynamic, typeMap = invalid as Dynamic) as Object
+' Shared with kinoWatchingNormalizeSerialsResponse's pre-normalize anime
+' filter — the "which field actually holds the raw item" resolution needs to
+' happen the same way in both places, before and during normalization.
+function kinoWatchingEntryItem(entry as Dynamic) as Dynamic
     item = invalid
-    media = invalid
     if entry <> invalid and type(entry) = "roAssociativeArray"
         if entry.DoesExist("item") then item = entry.item
         if entry.DoesExist("serial") then item = entry.serial
         if entry.DoesExist("series") then item = entry.series
+    end if
+    if item = invalid then item = entry
+    return item
+end function
+
+function kinoWatchingNormalizeSerialEntry(entry as Dynamic, typeMap = invalid as Dynamic) as Object
+    item = m.entryItem(entry)
+    media = invalid
+    if entry <> invalid and type(entry) = "roAssociativeArray"
         if entry.DoesExist("media") then media = entry.media
         if entry.DoesExist("video") then media = entry.video
         if entry.DoesExist("episode") then media = entry.episode
     end if
-    if item = invalid then item = entry
 
     title = m.stringField(item, "title", "")
     if title = "" then title = m.stringField(item, "name", "")
@@ -251,6 +267,32 @@ function kinoWatchingToggleWatched(accessToken as String, itemId as Integer, sea
     return result
 end function
 
+' https://kinoapi.com/api_watching.html#id16 — "Буду смотреть" toggle. Adds
+' or removes a serial from the user's watchlist (the same subscribed set
+' /v1/watching/serials?subscribed=1 reads back for the New Episodes rail);
+' unrelated to toggleWatched, which marks a single episode watched/unwatched.
+function kinoWatchingToggleWatchlist(accessToken as String, itemId as Integer) as Object
+    if itemId <= 0
+        return { ok: false, error: "invalid_item", message: "Unable to update your watchlist.", status: 0 }
+    end if
+
+    queryParams = {
+        access_token: accessToken
+        id: itemId
+    }
+
+    response = m.client.get("/v1/watching/togglewatchlist", queryParams, m.client.defaultTimeoutMs)
+    if response.ok <> true then return m.failure(response)
+
+    watching = invalid
+    if response.body <> invalid and type(response.body) = "roAssociativeArray" and response.body.DoesExist("watching")
+        watching = response.body.watching
+    end if
+    result = m.success(response)
+    result.watching = watching
+    return result
+end function
+
 function kinoWatchingSuccess(response as Object) as Object
     return { ok: true, status: response.status, rawBody: response.rawBody }
 end function
@@ -306,6 +348,21 @@ function kinoWatchingIntegerField(source as Dynamic, key as String, fallback as 
     if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value
     if valueType = "Float" or valueType = "Double" or valueType = "roFloat" or valueType = "roDouble" then return Int(value)
     return fallback
+end function
+
+function kinoWatchingArrayField(source as Dynamic, key as String) as Object
+    if source = invalid or type(source) <> "roAssociativeArray" then return []
+    if source.DoesExist(key) <> true or source[key] = invalid then return []
+    if type(source[key]) = "roArray" then return source[key]
+    return []
+end function
+
+function kinoWatchingItemIsAnime(item as Dynamic) as Boolean
+    genres = m.arrayField(item, "genres")
+    for each genre in genres
+        if LCase(m.stringField(genre, "title", "")) = "аниме" then return true
+    end for
+    return false
 end function
 
 function kinoWatchingFailure(response as Object) as Object

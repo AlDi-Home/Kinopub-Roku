@@ -9,12 +9,14 @@ function KinoHistoryService(client as Object) as Object
         typeBadgeForType: kinoHistoryTypeBadgeForType
         stringField: kinoHistoryStringField
         integerField: kinoHistoryIntegerField
+        arrayField: kinoHistoryArrayField
+        itemIsAnime: kinoHistoryItemIsAnime
         posterUrl: kinoHistoryPosterUrl
         failure: kinoHistoryFailure
     }
 end function
 
-function kinoHistoryList(accessToken as String, page as Integer, perpage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoHistoryList(accessToken as String, page as Integer, perpage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     queryParams = {
         access_token: accessToken
         page: page
@@ -23,10 +25,10 @@ function kinoHistoryList(accessToken as String, page as Integer, perpage as Inte
 
     response = m.client.get("/v1/history", queryParams, m.client.defaultTimeoutMs)
     if response.ok <> true then return m.failure(response)
-    return m.normalizeResponse(response.body, page, perpage, typeMap)
+    return m.normalizeResponse(response.body, page, perpage, typeMap, hideAnime)
 end function
 
-function kinoHistoryNormalizeResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic) as Object
+function kinoHistoryNormalizeResponse(body as Dynamic, requestedPage as Integer, requestedPerPage as Integer, typeMap = invalid as Dynamic, hideAnime = false as Boolean) as Object
     items = []
     pagination = {
         total: 0
@@ -45,14 +47,18 @@ function kinoHistoryNormalizeResponse(body as Dynamic, requestedPage as Integer,
 
     seenItemIds = {}
     for each entry in body.history
-        normalized = m.normalizeEntry(entry, typeMap)
-        isDuplicate = false
-        if normalized.itemId > 0
-            key = StrI(normalized.itemId).Trim()
-            if seenItemIds.DoesExist(key) then isDuplicate = true
-            seenItemIds[key] = true
+        entryItem = invalid
+        if entry <> invalid and type(entry) = "roAssociativeArray" and entry.DoesExist("item") then entryItem = entry.item
+        if hideAnime <> true or m.itemIsAnime(entryItem) <> true
+            normalized = m.normalizeEntry(entry, typeMap)
+            isDuplicate = false
+            if normalized.itemId > 0
+                key = StrI(normalized.itemId).Trim()
+                if seenItemIds.DoesExist(key) then isDuplicate = true
+                seenItemIds[key] = true
+            end if
+            if isDuplicate <> true then items.Push(normalized)
         end if
-        if isDuplicate <> true then items.Push(normalized)
     end for
 
     if body.DoesExist("pagination") and body.pagination <> invalid and type(body.pagination) = "roAssociativeArray"
@@ -177,6 +183,21 @@ function kinoHistoryIntegerField(source as Dynamic, key as String, fallback as I
     if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value
     if valueType = "Float" or valueType = "Double" or valueType = "roFloat" or valueType = "roDouble" then return Int(value)
     return fallback
+end function
+
+function kinoHistoryArrayField(source as Dynamic, key as String) as Object
+    if source = invalid or type(source) <> "roAssociativeArray" then return []
+    if source.DoesExist(key) <> true or source[key] = invalid then return []
+    if type(source[key]) = "roArray" then return source[key]
+    return []
+end function
+
+function kinoHistoryItemIsAnime(item as Dynamic) as Boolean
+    genres = m.arrayField(item, "genres")
+    for each genre in genres
+        if LCase(m.stringField(genre, "title", "")) = "аниме" then return true
+    end for
+    return false
 end function
 
 function kinoHistoryFailure(response as Object) as Object

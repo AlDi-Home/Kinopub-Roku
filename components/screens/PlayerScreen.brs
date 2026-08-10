@@ -1342,7 +1342,11 @@ function selectedAudioLanguage() as String
     for each item in items
         if menuItemId(item) = audioId then return trackLanguage(item)
     end for
-    if items.Count() = 1 then return trackLanguage(items[0])
+    ' No explicit selection recorded yet (brand-new episode/serial, nothing
+    ' manually picked this session) — Roku itself still defaults to the
+    ' first available track, so fall back to that instead of "" for every
+    ' multi-track item, not just single-track lists.
+    if items.Count() > 0 then return trackLanguage(items[0])
     return ""
 end function
 
@@ -2365,7 +2369,10 @@ function selectedAudioLabel() as String
     for each item in items
         if menuItemId(item) = audioId then return trackLabel(item)
     end for
-    if items.Count() = 1 then return trackLabel(items[0])
+    ' Same reasoning as selectedAudioLanguage(): nothing manually picked yet
+    ' this session still means Roku is actually playing the first track, not
+    ' a literal "Default" placeholder — reflect that instead of guessing wrong.
+    if items.Count() > 0 then return trackLabel(items[0])
     return "Default"
 end function
 
