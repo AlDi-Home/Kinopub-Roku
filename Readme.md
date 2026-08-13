@@ -1,6 +1,6 @@
 # KinoPub Roku Channel
 
-A Roku SceneGraph channel for browsing and watching [KinoPub](https://kino.pub) content, built for sideloading onto a physical Roku device (no emulator, no build server).
+A Roku SceneGraph channel for browsing and watching [KinoPub](https://kino.watch) content, built for sideloading onto a physical Roku device (no emulator, no build server).
 
 The project started as a fork of [slimus/Kinopub](https://github.com/slimus/Kinopub) — itself tracing back to the archived [karpeychik/Kinopub](https://github.com/karpeychik/Kinopub) channel — but has since had its navigation, screens, and player rebuilt from the ground up, so very little of the original UI remains. This document describes the app as it exists today.
 
@@ -18,6 +18,14 @@ The project started as a fork of [slimus/Kinopub](https://github.com/slimus/Kino
 - **Custom video player** — resume-from-position prompt, an icon-driven on-screen control row, a live "stats for nerds" overlay, and dedicated Audio/Subtitles/Quality panels. Audio and subtitle track choices are remembered per-series (not just per-episode), quality defaults to the best available HLS tier automatically, and AC3 audio tracks are filtered out since Roku hardware can't decode them. A quick "Сначала / Следующая серия" dialog (Down, when the OSD is hidden) restarts the current episode or jumps to the next one.
 
 Screens are singletons created once by `AppScene` and toggled visible/hidden rather than recreated, with a shared `PillNavBar` for cross-tab navigation. A legacy dark-themed `HomeScreen` still exists in the tree but is no longer reachable from the UI — it's kept only as reference material.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Continue Watching](screenshots/My.jpg) Continue Watching ("Мои") | ![Movies](screenshots/Movies.jpg) Movies |
+| ![Series](screenshots/Series.jpg) Series | ![Library](screenshots/Library.jpg) Library, with the Тип/Жанр/Страна/Год/Статус filter bar |
+| ![Search](screenshots/Search.jpg) Search | ![Settings](screenshots/Settings.jpg) Settings |
 
 ## Requirements
 
