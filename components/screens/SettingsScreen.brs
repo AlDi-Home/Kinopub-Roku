@@ -46,6 +46,7 @@ sub init()
 
     m.appSettingsStore = AppSettingsStore()
     m.hideAnime = m.appSettingsStore.loadHideAnime()
+    m.nextEpisodePromptEnabled = m.appSettingsStore.loadNextEpisodePromptEnabled()
 
     m.activeSettingId = ""
     m.settingsRows = []
@@ -274,11 +275,15 @@ function settingsScreenBuildRows() as Object
     hideAnimeText = "Нет"
     if m.hideAnime = true then hideAnimeText = "Да"
 
+    nextEpisodePromptText = "Нет"
+    if m.nextEpisodePromptEnabled = true then nextEpisodePromptText = "Да"
+
     return [
         { id: "support4k", label: "Поддержка 4K: " + fourKText }
         { id: "serverLocation", label: "Сервер: " + settingsScreenTitleForListValue(m.serverLocationOptions, m.serverLocationSelectedId) }
         { id: "streamingType", label: "Тип трансляции: " + settingsScreenTitleForListValue(m.streamingTypeOptions, m.streamingTypeSelectedId) }
         { id: "hideAnime", label: "Скрывать Аниме: " + hideAnimeText }
+        { id: "nextEpisodePromptEnabled", label: "Предлагать следующую серию: " + nextEpisodePromptText }
         { id: "signOut", label: "Выйти из аккаунта" }
     ]
 end function
@@ -352,6 +357,8 @@ sub settingsScreenActivateRow()
         settingsScreenToggleSupport4k()
     else if row.id = "hideAnime"
         settingsScreenToggleHideAnime()
+    else if row.id = "nextEpisodePromptEnabled"
+        settingsScreenToggleNextEpisodePrompt()
     else if row.id = "serverLocation" or row.id = "streamingType"
         settingsScreenOpenFilterPicker(row.id)
     else if row.id = "signOut"
@@ -375,6 +382,13 @@ end sub
 sub settingsScreenToggleHideAnime()
     m.hideAnime = m.hideAnime <> true
     m.appSettingsStore.saveHideAnime(m.hideAnime)
+    m.settingsRows = settingsScreenBuildRows()
+    settingsScreenRenderRows()
+end sub
+
+sub settingsScreenToggleNextEpisodePrompt()
+    m.nextEpisodePromptEnabled = m.nextEpisodePromptEnabled <> true
+    m.appSettingsStore.saveNextEpisodePromptEnabled(m.nextEpisodePromptEnabled)
     m.settingsRows = settingsScreenBuildRows()
     settingsScreenRenderRows()
 end sub

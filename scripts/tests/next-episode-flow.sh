@@ -43,3 +43,24 @@ grep -q 'detailScreen.observeField("nextPlayback", "onVideoDetailNextPlayback")'
 grep -q "sub onPlayerNextPlaybackRequested" components/AppScene.brs
 grep -q "sub onVideoDetailNextPlayback" components/AppScene.brs
 grep -q "m.playerScreen.nextPlayback = nextPlayback" components/AppScene.brs
+
+# Local setting defaults to the existing behavior and persists both values.
+grep -q 'loadNextEpisodePromptEnabled: appSettingsLoadNextEpisodePromptEnabled' source/services/AppSettingsStore.brs
+grep -q 'saveNextEpisodePromptEnabled: appSettingsSaveNextEpisodePromptEnabled' source/services/AppSettingsStore.brs
+grep -A 4 'function appSettingsLoadNextEpisodePromptEnabled' source/services/AppSettingsStore.brs | grep -q 'then return true'
+grep -q 'section.Write("nextEpisodePromptEnabled", text)' source/services/AppSettingsStore.brs
+grep -q 'section.Flush()' source/services/AppSettingsStore.brs
+
+# Settings exposes and saves the toggle; the player refreshes it on playback.
+grep -q 'Предлагать следующую серию:' components/screens/SettingsScreen.brs
+grep -q 'm.appSettingsStore.saveNextEpisodePromptEnabled(m.nextEpisodePromptEnabled)' components/screens/SettingsScreen.brs
+grep -q 'pkg:/source/services/AppSettingsStore.brs' components/screens/PlayerScreen.xml
+grep -q 'm.nextEpisodePromptEnabled = m.appSettingsStore.loadNextEpisodePromptEnabled()' components/screens/PlayerScreen.brs
+
+# Threshold and finished use the guarded auto path; manual paths remain direct.
+grep -A 4 'sub maybeRequestNextEpisodePrompt(reason as String)' components/screens/PlayerScreen.brs | grep -q 'if m.nextEpisodePromptEnabled <> true then return'
+grep -q 'maybeRequestNextEpisodePrompt("threshold")' components/screens/PlayerScreen.brs
+grep -q 'maybeRequestNextEpisodePrompt("finished")' components/screens/PlayerScreen.brs
+grep -q 'reason: "manualNext"' components/screens/PlayerScreen.brs
+grep -q 'reason: "seasonCarousel"' components/screens/PlayerScreen.brs
+grep -q 'm.nextEpisodeCountdownTimer.control = "start"' components/screens/PlayerScreen.brs

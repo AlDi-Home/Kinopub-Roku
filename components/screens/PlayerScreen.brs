@@ -52,6 +52,8 @@ sub init()
     m.playback = invalid
     m.preferences = {}
     m.preferenceStore = PlayerPreferenceStore()
+    m.appSettingsStore = AppSettingsStore()
+    m.nextEpisodePromptEnabled = m.appSettingsStore.loadNextEpisodePromptEnabled()
     m.controls = []
     m.controlNodes = []
     ' Icon row baseline: controlsHost/focusCursor both start at x=900 (see
@@ -149,6 +151,7 @@ sub onPlaybackChanged(event as Object)
     end if
 
     resetNextEpisodeState()
+    m.nextEpisodePromptEnabled = m.appSettingsStore.loadNextEpisodePromptEnabled()
     m.pendingResumeSeekPosition = 0
     m.preferences = m.preferenceStore.load(m.playback)
     m.titleLabel.text = playbackTitle()
@@ -674,6 +677,7 @@ end function
 
 sub maybeRequestNextEpisodePrompt(reason as String)
     if m.playback = invalid then return
+    if m.nextEpisodePromptEnabled <> true then return
     if m.nextEpisodeRequested = true or m.nextEpisodeRequestPending = true or m.nextEpisodePromptOpen = true then return
     if canAskForNextEpisode() <> true then return
 

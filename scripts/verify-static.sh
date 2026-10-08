@@ -568,7 +568,7 @@ grep -q 'sortByYear = contentTaskBooleanField(request, "sortByYear", true)' comp
 grep -q 'command = "loadSearchOptions"' components/tasks/ContentTask.brs
 grep -q "contentType = contentTaskStringField(request, \"contentType\"" components/tasks/ContentTask.brs
 grep -q "searchField = LCase(contentTaskStringField(request, \"searchField\"" components/tasks/ContentTask.brs
-grep -q "searchService.search(tokenResult.accessToken, query, page, perpage, typeMap, sortByYear, contentType, searchField)" components/tasks/ContentTask.brs
+grep -q "searchService.search(tokenResult.accessToken, query, page, perpage, typeMap, sortByYear, contentType, searchField, hideAnime)" components/tasks/ContentTask.brs
 grep -q "searchKeyboardGroup" components/screens/HomeScreen.xml
 grep -q "searchKeyboardCursorBg" components/screens/HomeScreen.xml
 grep -q "searchResultGridHost" components/screens/HomeScreen.xml

@@ -85,6 +85,7 @@
     <Timer id="statsOverlayTimer" repeat="true" duration="2" />
     <Timer id="startOverPromptTimer" repeat="false" duration="4.5" />
   </children>
+  <script type="text/brightscript" uri="pkg:/source/services/AppSettingsStore.brs" />
   <script type="text/brightscript" uri="pkg:/source/services/PlayerPreferenceStore.brs" />
   <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />
 </component>
